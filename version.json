@@ -1,7 +1,7 @@
 {
-  "versionCode": 20,
-  "versionName": "1.7.2",
-  "changelog": "- 修复若干已知问题，优化稳定性与兼容性（含部分定制/白标版本设置项无法保存的问题）。",
+  "versionCode": 21,
+  "versionName": "1.7.3",
+  "changelog": "- 新增模块配置与持久档案的 ZIP 导出/恢复，方便换机迁移。\n- 使用系统文件选择器，无需额外存储权限。\n- 修复恢复时 JSON 数组被误判为损坏的问题。\n- 增加 GitHub Actions 自动构建，并修复 Windows 本地构建兼容问题。",
   "downloads": [
     "https://github.com/haikow/com.chekayo.feishuantirecall/releases/latest",
     "https://t.me/fucklark"

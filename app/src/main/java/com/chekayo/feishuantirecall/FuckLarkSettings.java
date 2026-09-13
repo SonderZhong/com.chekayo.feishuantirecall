@@ -55,6 +55,7 @@ public class FuckLarkSettings implements IXposedHookLoadPackage {
     public void handleLoadPackage(LoadPackageParam lpparam) {
         if (!isLarkFamily(lpparam.packageName) && !AntiRecall.isLarkApp(lpparam.classLoader)) return;
         PKG = lpparam.packageName;   // 锁定当前应用包名(国际版=com.larksuite.suite; setClassName 第一参数用它)
+        DataMigration.install();
         try {
             // 设置页 onResume 时注入(幂等)
             XposedHelpers.findAndHookMethod(SETTING_FRAGMENT, lpparam.classLoader, "onResume",
@@ -358,6 +359,24 @@ public class FuckLarkSettings implements IXposedHookLoadPackage {
         }));
         box.addView(actionRow(ctx, "👋 退群 / 移除记录", 0xFF3B9EFF, new View.OnClickListener() {
             @Override public void onClick(View v) { showLeaveLog(ctx); }
+        }));
+
+        box.addView(groupHeader(ctx, "数据迁移"));
+        box.addView(actionRow(ctx, "导出模块备份", 0xFF34C759, new View.OnClickListener() {
+            @Override public void onClick(View v) { DataMigration.chooseExport(ctx); }
+        }));
+        box.addView(actionRow(ctx, "从备份恢复", 0xFFFF9500, new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                new AlertDialog.Builder(ctx)
+                        .setTitle("恢复模块数据")
+                        .setMessage("将用备份中的配置和档案覆盖当前同名数据。恢复完成后建议重启飞书。是否继续？")
+                        .setNegativeButton("取消", null)
+                        .setPositiveButton("选择备份", new android.content.DialogInterface.OnClickListener() {
+                            @Override public void onClick(android.content.DialogInterface d, int which) {
+                                DataMigration.chooseImport(ctx);
+                            }
+                        }).show();
+            }
         }));
 
         box.addView(groupHeader(ctx, "关于"));
