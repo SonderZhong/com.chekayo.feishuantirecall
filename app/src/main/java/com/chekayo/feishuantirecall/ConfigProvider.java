@@ -1,0 +1,68 @@
+package com.chekayo.feishuantirecall;
+
+import android.content.ContentProvider;
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Bundle;
+
+import java.io.File;
+import java.io.FileOutputStream;
+
+/**
+ * 模块侧权威源：配置 + 同事档案副本。
+ * 飞书进程启动时 call get 拉配置；归档写入后 call putFile 推送 profiles/resigned 到模块目录，
+ * 桌面入口才能读到「同事记录」。
+ */
+public class ConfigProvider extends ContentProvider {
+    public static final String AUTHORITY = "com.chekayo.feishuantirecall.config";
+    public static final Uri URI = Uri.parse("content://" + AUTHORITY);
+
+    @Override public boolean onCreate() { return true; }
+
+    @Override public Bundle call(String method, String arg, Bundle extras) {
+        try {
+            if (getContext() != null) {
+                Config.setContext(getContext());
+                if (Config.cfgFile == null) Config.setFilesDir(getContext().getFilesDir());
+            }
+            if ("get".equals(method)) {
+                Config.load();
+                Bundle b = new Bundle();
+                b.putString("json", Config.snapshot());
+                return b;
+            }
+            if ("put".equals(method)) {
+                String json = extras != null ? extras.getString("json") : null;
+                Config.onSyncReceive(json);
+                Bundle b = new Bundle();
+                b.putString("json", Config.snapshot());
+                return b;
+            }
+            // arg = 文件名（profiles.json / resigned_all.json），extras.data = 内容
+            if ("putFile".equals(method) && arg != null && extras != null) {
+                String name = arg.replace("..", "").replace("/", "_").replace("\\", "_");
+                if (!name.endsWith(".json")) return null;
+                byte[] data = extras.getByteArray("data");
+                if (data == null) return null;
+                File dir = new File(getContext().getFilesDir(), "resign_tracker");
+                if (!dir.isDirectory()) dir.mkdirs();
+                File out = new File(dir, name);
+                FileOutputStream os = new FileOutputStream(out);
+                os.write(data);
+                os.close();
+                out.setReadable(true, false);
+                Bundle b = new Bundle();
+                b.putBoolean("ok", true);
+                return b;
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    @Override public Cursor query(Uri u, String[] p, String s, String[] a, String o) { return null; }
+    @Override public String getType(Uri uri) { return null; }
+    @Override public Uri insert(Uri uri, ContentValues values) { return null; }
+    @Override public int delete(Uri uri, String s, String[] a) { return 0; }
+    @Override public int update(Uri uri, ContentValues v, String s, String[] a) { return 0; }
+}

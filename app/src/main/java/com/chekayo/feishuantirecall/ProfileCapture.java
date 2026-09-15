@@ -28,7 +28,7 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 
 /**
- * fuck lark 「开资料页即归档」——V3 资料页是 section 分块渲染, 数据不走 entity.Profile,
+ * FeishuKit「开资料页即归档」——V3 资料页是 section 分块渲染, 数据不走 entity.Profile,
  * 所以直接抓页面渲染出的 UI 文本(部门/企业邮箱/直属上级/职务/工号/手机号), 按 label→value 配对,
  * 连同 uid(从 Activity intent 取)存进 profiles.json。你打开过谁的资料就存谁, 离职后归档仍在。
  */
@@ -151,6 +151,7 @@ public class ProfileCapture implements IXposedHookLoadPackage {
                 write(OUT, all.toString(1));
                 total = all.length();
             }
+            ArchiveSync.pushProfiles();
             XposedBridge.log("[fucklark] 归档资料 " + name + " uid=" + uid
                     + " 部门=" + rec.optString("department") + " 邮箱=" + rec.optString("email")
                     + " 职务=" + rec.optString("position") + " 上级=" + rec.optString("leader")

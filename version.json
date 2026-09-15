@@ -1,7 +1,7 @@
 {
-  "versionCode": 21,
-  "versionName": "1.7.3",
-  "changelog": "- 新增模块配置与持久档案的 ZIP 导出/恢复，方便换机迁移。\n- 使用系统文件选择器，无需额外存储权限。\n- 修复恢复时 JSON 数组被误判为损坏的问题。\n- 增加 GitHub Actions 自动构建，并修复 Windows 本地构建兼容问题。",
+  "versionCode": 22,
+  "versionName": "1.8.0",
+  "changelog": "· 全新设置界面：核心 / 记录 / 工具三页签，深浅色适配；桌面图标与飞书设置页共用同一面板\n· 新增桌面全屏配置入口（FeishuKit），LSPosed 可直接启动设置\n· 修复桌面点「记录」闪退（查看器与 Xposed 解耦）\n· 配置双端同步：模块与飞书进程按 updatedAt 对齐，修复 Android 13+ 广播收不到导致的配置分叉\n· 同事档案 / 离职名单可同步到模块侧查看\n· 赞赏码改为工具页手动打开（不再自动弹窗），并修复桌面进程读不到赞赏图\n· 对外名称统一为 FeishuKit；飞书设置页入口 hook 多类名兜底",
   "downloads": [
     "https://github.com/haikow/com.chekayo.feishuantirecall/releases/latest",
     "https://t.me/fucklark"

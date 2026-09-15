@@ -1,4 +1,4 @@
-# FeishuKit（fuck lark）
+# FeishuKit
 
 > 给飞书 / Lark 加点"超能力"的逆向工具集 —— Xposed/LSPosed 模块 + Linux 桌面端补丁 + 逆向研究脚本。
 
@@ -22,12 +22,15 @@ Android（Xposed/LSPosed 模块，包名 `com.chekayo.feishuantirecall`）：
 
 | 功能 | 说明 |
 |---|---|
-| **防撤回** | native SQL 层拦截 —— 撤回本质是对同一 id `REPLACE INTO messages` 把 `is_recalled` 置 1、`content` 清空。模块检测到撤回写入后保留原文，原文与"已撤回"提示并存 |
-| **撤回消息后台存档** | 撤回消息落本地归档 |
-| **防已读回执**（`stealth-read/`）| 拦截出站已读回执 RPC，静默阅读不回执 |
-| **被踢群 / 静默退群保留** | 被移出群后保留会话与历史 |
-| **组织通讯录巡游 + 花名册归档** | 无障碍 DFS 走遍部门触发懒加载后归档（`OrgWalkerService`）|
-| **离职同事资料归档** | 解析 profile blob（`larkresign/ResignTracker`）|
+| **防撤回** | native SQL 层拦截；原文与「已撤回」提示并存 |
+| **防对方已读** | 清空出站已读回执的 message 列表，只看不回＝未读 |
+| **后台消息存档** | 从通知回捞后台被撤回消息的原文 |
+| **移除聊天水印 / 解除下载与保密限制 / 审计无痕** | 设置面板「解除限制」分组 |
+| **被踢群 / 退群提醒** | 保留被移出群的本地记录，退群事件 Toast + 日志 |
+| **组织通讯录巡游 + 花名册归档** | 无障碍 DFS 走遍部门触发懒加载后归档 |
+| **离职同事资料归档** | 解析 profile blob；档案/离职名单可同步到模块侧查看 |
+
+设置入口：桌面图标 **FeishuKit** · LSPosed 模块详情「启动」· 飞书「我 → 设置 → FeishuKit 设置」。
 
 Linux 桌面端（`linux-desktop-unread/`）：Electron `.asar` 补丁 + autopatch systemd 单元（升级后自动重打补丁）。
 
@@ -64,8 +67,9 @@ build.sh / build.ps1    一键构建（Linux / Windows）
 ## 安装
 
 1. Root + [LSPosed](https://github.com/LSPosed/LSPosed)（或 Xposed 框架）。
-2. 安装构建出的 APK，在 LSPosed 里勾选作用域为飞书 / Lark，重启飞书。
-3. 各功能开关在模块启动器 UI / 飞书设置页内。
+2. 安装 Release 中的 APK（或本地 `build.ps1` / `build.sh` 产物），在 LSPosed 勾选作用域为飞书 / Lark，重启飞书。
+3. 打开设置：桌面 **FeishuKit** 图标，或飞书「我 → 设置 → FeishuKit 设置」。
+4. 若在工具页点过「隐藏桌面图标」，LSPosed 的启动入口也会失效——到系统设置 → 应用 → FeishuKit → 启用即可恢复。
 
 ## 版本适配
 

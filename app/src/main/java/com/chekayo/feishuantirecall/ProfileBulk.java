@@ -14,7 +14,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * fuck lark 「V3 富资料批量归档」——替代 ProfileCapture 的「点谁存谁」。
+ * FeishuKit「V3 富资料批量归档」——替代 ProfileCapture 的「点谁存谁」。
  *
  * 数据源: contact.db 的 chatter_profiles_v3.profile(protobuf BLOB), 由 native doProfileDump 就地掏出,
  *         按行落成 JSONL(每行 {chatter_id,tenant_id,name,is_resigned,hex})。本类负责:
@@ -116,6 +116,8 @@ public class ProfileBulk {
             }
             writeAtomic(profilesJson, all.toString(1));
         }
+        // 归档后推副本到模块进程，桌面「同事记录」才能读到
+        ArchiveSync.pushProfiles();
         return updates.size();
     }
 
@@ -218,6 +220,8 @@ public class ProfileBulk {
             }
             writeAtomic(profilesJson, all.toString(1));
         }
+        // 归档后推副本到模块进程，桌面「同事记录」才能读到
+        ArchiveSync.pushProfiles();
         return updates.size();
     }
 

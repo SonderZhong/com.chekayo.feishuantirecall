@@ -126,7 +126,7 @@ public class ResignTracker implements IXposedHookLoadPackage, IXposedHookZygoteI
                 while (true) {
                     try {
                         Config.load();
-                        if (!Config.resign) { sleep(30000); continue; }   // fuck lark 开关: 关了就不采集
+                        if (!Config.resign) { sleep(30000); continue; }   // FeishuKit 开关: 关了就不采集
                         nativeArmDump(snapFile.getAbsolutePath());
                         int rc = -999;
                         for (int k = 0; k < 60; k++) {       // 等下一次 contact.db prepare 完成 dump, 最多 ~30s
@@ -138,6 +138,10 @@ public class ResignTracker implements IXposedHookLoadPackage, IXposedHookZygoteI
                             int merged = mergeInto(allFile, snapFile);
                             XposedBridge.log(TAG + ": 离职快照=" + rc + " 累计存档=" + merged
                                     + " -> " + allFile.getAbsolutePath());
+                            // 离职名单推副本到模块进程，桌面「记录→离职名单」才能读到
+                            if (merged >= 0) {
+                                com.chekayo.feishuantirecall.ArchiveSync.pushAll();
+                            }
                         }
                         // rc==-1: contact.db 句柄还没抓到 (还没查过联系人), 下轮继续
 
@@ -150,6 +154,7 @@ public class ResignTracker implements IXposedHookLoadPackage, IXposedHookZygoteI
                                 if (prc >= 0) {
                                     int n = ProfileBulk.merge(profJsonl, profJson);
                                     XposedBridge.log(TAG + ": V3富资料 dump=" + prc + " 并入档案=" + n + " -> " + profJson.getAbsolutePath());
+                                    com.chekayo.feishuantirecall.ArchiveSync.pushProfiles();
                                     profJsonl.delete();   // 临时文件用完即删(可含大量 hex)
                                 }
                             } catch (Throwable pe) { XposedBridge.log(TAG + ": profile dump err " + pe); }
@@ -176,6 +181,16 @@ public class ResignTracker implements IXposedHookLoadPackage, IXposedHookZygoteI
         }, "lark-resign-tracker");
         t.setDaemon(true);
         t.start();
+        // 启动稍后推一次已有档案/离职名单副本到模块进程（等 Application/Context 就绪）
+        Thread pushOnce = new Thread(new Runnable() {
+            @Override public void run() {
+                try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
+                try { com.chekayo.feishuantirecall.ArchiveSync.pushAll(); }
+                catch (Throwable t) { XposedBridge.log(TAG + ": startup archive push err " + t); }
+            }
+        }, "lark-archive-push");
+        pushOnce.setDaemon(true);
+        pushOnce.start();
     }
 
     /** 把本次快照 union 进累计文件 (按 id 去重; 新 id 记 first_seen; 每次刷新 name/last_seen)。返回累计人数。 */
