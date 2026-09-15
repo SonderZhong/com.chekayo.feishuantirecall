@@ -78,6 +78,7 @@ public class ProfileBulk {
             u.put("tenant_id", tid);
             u.put("is_home", home != null && home.equals(tid));
             u.put("is_resigned", "1".equals(row.optString("is_resigned", "")));
+            u.put("kind", DataViews.classifyProfile(u));
             u.put("department",  flat(sec.get(SEC_DEPT)));
             u.put("email",       flat(sec.get(SEC_EMAIL)));
             u.put("employee_id", flat(sec.get(SEC_JOBNO)));
@@ -170,6 +171,7 @@ public class ProfileBulk {
             u.put("tenant_id", tid);
             u.put("is_home", home != null && home.equals(tid));
             u.put("is_resigned", "1".equals(row.optString("is_resigned", "")));
+            u.put("kind", DataViews.classifyProfile(u));
 
             // 有 hex 才解 protobuf 明细; 无 hex 只补姓名/分类(放在 update 里, merge 时按 append-only 补)
             String hex = row.optString("hex", "");
