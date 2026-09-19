@@ -21,9 +21,10 @@ import android.widget.Toast;
 final class SettingsPanel {
     private SettingsPanel() { }
 
-    /** 在飞书进程内以 AlertDialog 弹出完整面板。 */
+    /** 在飞书进程内以 AlertDialog 弹出完整面板（打开前刷新当前账号，保证档案/消息路径正确）。 */
     static void show(final Context ctx) {
         try { Config.setFilesDir(ctx.getFilesDir()); } catch (Throwable ignored) { }
+        try { AccountPaths.bind(ctx, null); } catch (Throwable ignored) { }
         Config.loadAndAnnounce();
         final boolean tampered = readTampered();
         final LinearLayout root = buildRoot(ctx, /*standalone=*/false, tampered);
@@ -42,6 +43,8 @@ final class SettingsPanel {
     /** 模块桌面入口：作为 Activity 内容的完整页面（非对话框）。 */
     static View buildStandalonePage(Context ctx) {
         try { Config.setFilesDir(ctx.getFilesDir()); } catch (Throwable ignored) { }
+        // 桌面进程探测不到飞书账号时保持 unknown，读档案会回落旧路径/模块副本
+        try { if (AccountPaths.currentUid == null || AccountPaths.currentUid.isEmpty()) AccountPaths.bind(ctx, null); } catch (Throwable ignored) { }
         Config.loadAndAnnounce();
         return buildRoot(ctx, /*standalone=*/true, /*tampered=*/false);
     }
@@ -306,7 +309,8 @@ final class SettingsPanel {
 
         if (standalone) {
             TextView hint = new TextView(ctx);
-            hint.setText("说明：记录数据保存在飞书应用目录内，需在飞书「设置 → 模块设置」中查看完整列表。");
+            hint.setText(AccountPaths.label(ctx) + "\n"
+                    + "说明：记录与档案按飞书账号隔离；飞书内「设置 → 模块设置」查看更完整。");
             hint.setTextSize(12);
             hint.setTextColor(Ui.muteColor(ctx));
             hint.setPadding(Ui.dp(ctx, 16), Ui.dp(ctx, 12), Ui.dp(ctx, 16), 0);

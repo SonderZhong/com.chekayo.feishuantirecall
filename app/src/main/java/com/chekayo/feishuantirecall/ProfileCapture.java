@@ -62,7 +62,9 @@ public class ProfileCapture implements IXposedHookLoadPackage {
     public void handleLoadPackage(LoadPackageParam lpparam) {
         if (!isLarkFamily(lpparam.packageName) && !AntiRecall.isLarkApp(lpparam.classLoader)) return;
         PKG = lpparam.packageName;
-        OUT = new File("/data/data/" + PKG + "/files/resign_tracker/profiles.json");
+        // 按当前飞书账号隔离 profiles.json
+        try { AccountPaths.bind(null, PKG); } catch (Throwable ignored) {}
+        OUT = AccountPaths.accountFile(null, PKG, AccountPaths.currentUid, "resign_tracker/profiles.json");
         try {
             XposedHelpers.findAndHookMethod(ACT, lpparam.classLoader, "onCreate", Bundle.class, new XC_MethodHook() {
                 @Override protected void afterHookedMethod(MethodHookParam param) {
@@ -84,6 +86,11 @@ public class ProfileCapture implements IXposedHookLoadPackage {
 
     static void scrape(Activity act) {
         if (!Config.resign) return;
+        // 每次抓取前重绑账号目录（切号后写入正确账号）
+        try {
+            AccountPaths.bind(act, PKG);
+            OUT = AccountPaths.accountFile(act, PKG, AccountPaths.currentUid, "resign_tracker/profiles.json");
+        } catch (Throwable ignored) {}
         Window w = act.getWindow();
         if (w == null) return;
         List<String> texts = new ArrayList<String>();

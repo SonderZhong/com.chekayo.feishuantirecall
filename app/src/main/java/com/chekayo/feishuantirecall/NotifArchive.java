@@ -55,8 +55,18 @@ public class NotifArchive {
 
     public static void setFilesDir(File filesDir) {
         if (filesDir == null) return;
-        FILE = new File(filesDir, "notif_archive.txt");
+        // 通知存档按登录账号隔离
+        String uid = AccountPaths.currentUid;
+        if (uid == null || uid.isEmpty()) uid = AccountPaths.FALLBACK_UID;
+        File acc = new File(filesDir, "accounts/" + AccountPaths.safeUid(uid));
+        FILE = new File(acc, "notif_archive.txt");
         restoredFromFile = false;
+    }
+
+    /** 解析消息文件（读优先级：当前账号 → 其它账号 → 旧全局路径）。 */
+    static File resolveArchiveFile() {
+        if (FILE != null && FILE.exists()) return FILE;
+        return AccountPaths.resolveMessageFile(null, null, AccountPaths.currentUid, "notif_archive.txt");
     }
 
     /** 由 NotificationManager.notify hook 调。 */
@@ -249,27 +259,6 @@ public class NotifArchive {
     }
 
     /** 解析存档路径：本进程 FILE → 飞书沙箱 → 模块目录（桌面统计）。 */
-    static File resolveArchiveFile() {
-        if (FILE != null && FILE.exists()) return FILE;
-        String[] pkgs = { "com.ss.android.lark", "com.larksuite.suite", "com.chekayo.feishuantirecall" };
-        for (String pkg : pkgs) {
-            File f = new File("/data/data/" + pkg + "/files/notif_archive.txt");
-            if (f.exists()) return f;
-            f = new File("/data/user/0/" + pkg + "/files/notif_archive.txt");
-            if (f.exists()) return f;
-        }
-        try {
-            Class<?> c = Class.forName("android.app.ActivityThread");
-            Object app = c.getMethod("currentApplication").invoke(null);
-            if (app instanceof Context) {
-                File m = new File(((Context) app).getFilesDir(), "notif_archive.txt");
-                if (m.exists()) return m;
-            }
-        } catch (Throwable ignored) {}
-        return FILE;
-    }
-
-    /** 读存档全文（统计用）。 */
     public static synchronized String read() {
         try {
             File f = resolveArchiveFile();

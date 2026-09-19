@@ -535,7 +535,16 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
         // 必须在 Config.load()/Diag.w() 之前, 否则它们用的还是 null 路径。
         File filesDir = new File(dataDir, "files");
         try { Config.setFilesDir(filesDir); Diag.setFilesDir(filesDir); } catch (Throwable t) { XposedBridge.log("[antirecall] setFilesDir err " + t); }
-        try { nativeSetDataDir(filesDir.getAbsolutePath()); } catch (Throwable t) { XposedBridge.log("[antirecall] nativeSetDataDir err " + t); }
+        // native 写退群/被踢日志时也进当前账号子目录
+        try {
+            AccountPaths.bind(null, PKG);
+            File acc = AccountPaths.accountRoot(null, PKG, AccountPaths.currentUid);
+            acc.mkdirs();
+            nativeSetDataDir(acc.getAbsolutePath());
+        } catch (Throwable t) {
+            try { nativeSetDataDir(filesDir.getAbsolutePath()); } catch (Throwable ignored) {}
+        }
+        try { nativeSetDataDir(AccountPaths.accountRoot(null, PKG, AccountPaths.currentUid).getAbsolutePath()); } catch (Throwable ignored) {}
 
         // FeishuKit: 读配置 + 与模块权威源对齐 + 按开关设防撤回/诊断状态
         // 注意: 不能只 load() 本地旧文件——会把刚同步到的配置冲掉

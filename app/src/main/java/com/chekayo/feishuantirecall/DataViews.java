@@ -52,8 +52,15 @@ final class DataViews {
         "https://raw.githubusercontent.com/haikow/com.chekayo.feishuantirecall/main/version.json"
     };
 
-    /** 解析档案文件：飞书沙箱优先，否则模块副本。 */
+    /**
+     * 解析档案文件：按登录账号隔离。
+     * 优先飞书 files/accounts/&lt;uid&gt;/resign_tracker/，再回落模块副本与旧全局路径。
+     */
     static File archiveFile(String name) {
+        try {
+            File acc = AccountPaths.resolveArchive(null, PKG, AccountPaths.currentUid, name);
+            if (acc != null && acc.exists()) return acc;
+        } catch (Throwable ignored) {}
         File f = new File("/data/data/" + PKG + "/files/resign_tracker/" + name);
         if (f.exists()) return f;
         f = new File("/data/user/0/" + PKG + "/files/resign_tracker/" + name);
@@ -246,7 +253,7 @@ final class DataViews {
 
     /** 退群/被移除记录: 读 leave_log.txt(每行 "时间\\t文案"), 倒序显示 + 复制 + 清空。 */
     static void showLeaveLog(final Context ctx) {
-        final File f = new File("/data/data/" + PKG + "/files/leave_log.txt");
+        final File f = AccountPaths.resolveMessageFile(ctx, PKG, AccountPaths.currentUid, "leave_log.txt");
         String content = "";
         try { if (f.exists()) content = new String(Diag.readBytes(f), "UTF-8"); } catch (Throwable ignored) {}
         if (content.trim().isEmpty()) {
@@ -299,10 +306,17 @@ final class DataViews {
 
     /** 被踢群聊天记录: 列出 files/kicked_*.txt, 支持搜索, 点开看内容 + 复制 + 分享。 */
     static void showKickedExports(final Context ctx) {
-        File dir = new File("/data/data/" + PKG + "/files");
-        final File[] files = dir.listFiles(new java.io.FilenameFilter() {
+        File dir = AccountPaths.accountRoot(ctx, PKG, AccountPaths.currentUid);
+        File[] found = dir.listFiles(new java.io.FilenameFilter() {
             @Override public boolean accept(java.io.File d, String n) { return n.startsWith("kicked_") && n.endsWith(".txt"); }
         });
+        if (found == null || found.length == 0) {
+            dir = new File("/data/data/" + PKG + "/files");
+            found = dir.listFiles(new java.io.FilenameFilter() {
+                @Override public boolean accept(java.io.File d, String n) { return n.startsWith("kicked_") && n.endsWith(".txt"); }
+            });
+        }
+        final File[] files = found;
         if (files == null || files.length == 0) {
             new AlertDialog.Builder(ctx).setTitle("被踢群聊天记录")
                     .setMessage("暂无记录。开启「保留被踢群聊天记录」后会自动导出。")
@@ -829,9 +843,10 @@ final class DataViews {
             root.addView(topBar, new LinearLayout.LayoutParams(-1, -2));
 
             TextView hint = new TextView(ctx);
-            hint.setText("归类：有部门或邮箱 → 同事；无部门且无邮箱 → 机器人；离职/外部单独页签。\n"
-                    + "左右切换页签，上下滑动列表。\n"
-                    + "收录更多人：进飞书【通讯录→组织架构】展开各部门并滑到底，模块会自动归档。");
+            hint.setText(AccountPaths.label(ctx)
+                    + "\n归类：有部门或邮箱 → 同事；无部门且无邮箱 → 机器人；离职/外部单独页签。\n"
+                    + "档案与消息按飞书账号隔离，切换账号后各看各的。\n"
+                    + "左右切换页签，上下滑动列表。");
             hint.setTextSize(11);
             hint.setTextColor(Ui.subColor(ctx));
             hint.setPadding(dp(ctx, 4), dp(ctx, 2), dp(ctx, 4), dp(ctx, 6));
