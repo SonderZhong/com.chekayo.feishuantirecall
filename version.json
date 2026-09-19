@@ -1,7 +1,7 @@
 {
-  "versionCode": 23,
+  "versionCode": 24,
   "versionName": "1.8.2",
-  "changelog": "· 飞书设置入口改为独立卡片「模块设置」，字号与右侧图标随原生设置项自适应",
+  "changelog": "· 设置入口改为独立卡片「模块设置」，字号与图标随原生设置项自适应\n· 后台撤回策略理顺：统计存档 / 聊天还原 / 提示文案 三条分离\n· 有通知存档时聊天直接显示原文；无存档才显示配置的撤回提示\n· 后台消息存档支持推送副本，桌面「记录」可读条数",
   "channel": "https://t.me/fucklark",
   "downloads": [
     "https://t.me/fucklark",

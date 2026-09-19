@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.chekayo.feishuantirecall"
-    android:versionCode="23"
+    android:versionCode="24"
     android:versionName="1.8.2">
 
     <uses-sdk android:minSdkVersion="22" android:targetSdkVersion="34" />
@@ -24,7 +24,7 @@
         -->
         <activity
             android:name=".LauncherActivity"
-            android:label="模块设置"
+            android:label="FeishuKit"
             android:exported="true"
             android:enabled="true"
             android:theme="@style/FeishuKitLauncher"

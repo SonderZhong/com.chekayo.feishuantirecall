@@ -1065,5 +1065,5 @@ final class DataViews {
 
     static String moduleVersion() { return "1.8.2"; }
 
-    static int moduleVersionCode() { return 23; }
+    static int moduleVersionCode() { return 24; }
 }

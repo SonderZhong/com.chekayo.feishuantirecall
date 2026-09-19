@@ -34,10 +34,10 @@ public final class ArchiveSync {
         } catch (Throwable ignored) { }
     }
 
-    /** 将飞书侧档案文件推送到模块副本目录。name 仅接受 *.json。 */
+    /** 将飞书侧档案文件推送到模块副本目录。name 仅接受 *.json / *.txt。 */
     public static void pushToModule(String name) {
         try {
-            if (name == null || !name.endsWith(".json")) return;
+            if (name == null || !(name.endsWith(".json") || name.endsWith(".txt"))) return;
             Context c = Config.appContextForSync();
             if (c == null) return;
             File f = findLarkFile(name);
@@ -55,11 +55,14 @@ public final class ArchiveSync {
 
     public static void pushProfiles() { pushToModule("profiles.json"); }
     public static void pushResigned() { pushToModule("resigned_all.json"); }
+    /** 后台消息存档（文本日志），供桌面统计条数。 */
+    public static void pushNotifArchive() { pushToModule("notif_archive.txt"); }
 
-    /** 一次把档案 + 离职名单都推过去。 */
+    /** 一次把档案 + 离职名单 + 通知存档都推过去。 */
     public static void pushAll() {
         pushProfiles();
         pushResigned();
+        pushNotifArchive();
     }
 
     private static File findLarkFile(String name) {
@@ -88,10 +91,13 @@ public final class ArchiveSync {
                 byte[] data = intent.getByteArrayExtra("data");
                 if (name == null || data == null || data.length == 0) return;
                 name = name.replace("..", "").replace("/", "_").replace("\\", "_");
-                if (!name.endsWith(".json")) return;
+                if (!name.endsWith(".json") && !name.endsWith(".txt")) return;
                 File dir = new File(context.getFilesDir(), "resign_tracker");
                 if (!dir.isDirectory()) dir.mkdirs();
-                File out = new File(dir, name);
+                // 通知存档放 files 根目录，与其它档案目录区分
+                File out = name.endsWith(".txt")
+                        ? new File(context.getFilesDir(), name)
+                        : new File(dir, name);
                 FileOutputStream os = new FileOutputStream(out);
                 os.write(data);
                 os.close();

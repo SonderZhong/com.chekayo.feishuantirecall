@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -131,13 +132,25 @@ final class SettingsPanel {
                 try { AntiRecall.nativeSetRecall(b); } catch (Throwable ignored) { }
             }
         }));
+        // ── 防撤回展示选项 ──
+        c1.addView(Ui.dividerRow(ctx));
+        c1.addView(Ui.switchRow(ctx, "撤回提示", "无存档时的提示；有存档时聊天直接显示原文",
+                Config.showRecallHint, new Ui.OnToggle() {
+            @Override public void on(boolean b) { Config.set("showRecallHint", b); }
+        }));
+        c1.addView(Ui.dividerRow(ctx));
+        c1.addView(Ui.navRow(ctx, "撤回提示文案",
+                "当前：" + Config.recallHintText, Ui.ACCENT,
+                new View.OnClickListener() {
+            @Override public void onClick(View v) { showRecallHintTextEditor(ctx); }
+        }));
         c1.addView(Ui.dividerRow(ctx));
         c1.addView(Ui.switchRow(ctx, "防对方已读", "只看不回＝未读，回复后才标记已读",
                 Config.antiread, new Ui.OnToggle() {
             @Override public void on(boolean b) { Config.set("antiread", b); }
         }));
         c1.addView(Ui.dividerRow(ctx));
-        c1.addView(Ui.switchRow(ctx, "后台消息存档", "从通知回捞后台被撤回消息的原文（需开消息预览）",
+        c1.addView(Ui.switchRow(ctx, "后台消息存档", "存档并在聊天里还原后台被撤回的消息（需开消息预览）",
                 Config.notifarchive, new Ui.OnToggle() {
             @Override public void on(boolean b) { Config.set("notifarchive", b); }
         }));
@@ -524,6 +537,41 @@ final class SettingsPanel {
     private static String subdirDisplay() {
         String s = Config.pubdownloadSubdir;
         return (s == null || s.isEmpty()) ? "Download/（根目录）" : "Download/" + s;
+    }
+
+    /** 撤回提示文案编辑：支持 {name} 占位发送人。 */
+    static void showRecallHintTextEditor(final Context ctx) {
+        final EditText et = new EditText(ctx);
+        et.setHint("例如：撤回了一条消息；或 {name} 撤回了消息");
+        et.setText(Config.recallHintText);
+        int p = Ui.dp(ctx, 16);
+        et.setPadding(p, p, p, p);
+        TextView tip = new TextView(ctx);
+        tip.setText("可含 {name} 或 {sender} 代表发送人；留空恢复默认「撤回了一条消息」。");
+        tip.setTextSize(12);
+        tip.setTextColor(Ui.subColor(ctx));
+        tip.setPadding(p, 0, p, p / 2);
+        LinearLayout wrap = new LinearLayout(ctx);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        wrap.addView(et);
+        wrap.addView(tip);
+        new AlertDialog.Builder(ctx)
+                .setTitle("撤回提示文案")
+                .setView(wrap)
+                .setPositiveButton("保存", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int w) {
+                        Config.setStr("recallHintText", et.getText().toString());
+                        Toast.makeText(ctx, "提示文案: " + Config.recallHintText, Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNeutralButton("恢复默认", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int w) {
+                        Config.setStr("recallHintText", "撤回了一条消息");
+                        Toast.makeText(ctx, "已恢复默认提示文案", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     // 组织巡游广播（发给模块进程的 OrgWalkerService）
