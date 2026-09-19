@@ -27,7 +27,7 @@ APKSIGNER="${BT}apksigner"
 
 OUTDIR="build/release"
 mkdir -p "$OUTDIR"
-NEWNAME="FeishuKit-v${VN}-vc${VC}-arm64-release.apk"
+NEWNAME="feishukit-${VN}.apk"
 cp -f "$APK" "$OUTDIR/$NEWNAME"
 
 APK_SHA="$(sha256sum "$OUTDIR/$NEWNAME" | awk '{print $1}')"
