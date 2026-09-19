@@ -27,7 +27,7 @@ APKSIGNER="${BT}apksigner"
 
 OUTDIR="build/release"
 mkdir -p "$OUTDIR"
-NEWNAME="fucklark-v${VN}-vc${VC}-arm64-release.apk"
+NEWNAME="FeishuKit-v${VN}-vc${VC}-arm64-release.apk"
 cp -f "$APK" "$OUTDIR/$NEWNAME"
 
 APK_SHA="$(sha256sum "$OUTDIR/$NEWNAME" | awk '{print $1}')"
@@ -47,7 +47,7 @@ done
 
 NOTES="$OUTDIR/RELEASE_NOTES.md"
 cat > "$NOTES" <<EOF
-# fuck lark v${VN}
+# FeishuKit v${VN}
 
 - versionName：\`${VN}\`
 - versionCode：\`${VC}\`
@@ -94,7 +94,7 @@ echo "填好『主要变更』后，可直接发布（Xposed tag 格式：<vc>-<
 echo
 echo "  gh release create ${VC}-${VN} \\"
 echo "    -R haikow/com.chekayo.feishuantirecall \\"
-echo "    -t 'fuck lark v${VN}' \\"
+echo "    -t 'FeishuKit v${VN}' \\"
 echo "    -F $NOTES \\"
 echo "    $OUTDIR/$NEWNAME"
 echo

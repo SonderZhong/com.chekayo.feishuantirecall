@@ -16,7 +16,7 @@ import de.robv.android.xposed.XposedHelpers;
 /**
  * 主页顶部更新横幅 —— 参考 XAuxiliary: 往宿主 MainActivity 内容区(android.R.id.content)顶部注入一条
  * 可点击 / 可关闭的横幅(LinearLayout: 文案占权重 + ✕ 关闭)。有新版时提示, 点击去更新, ✕ 记住忽略该版本。
- * 复用现有 version.json 检查(FuckLarkSettings.UPDATE_MIRRORS)。开关 Config.updatebanner(默认开)。
+ * 复用现有 version.json 检查(DataViews.UPDATE_MIRRORS)。开关 Config.updatebanner(默认开)。
  */
 public class UpdateBanner {
 
@@ -70,7 +70,7 @@ public class UpdateBanner {
     }
 
     static String fetch() {
-        for (String u : FuckLarkSettings.UPDATE_MIRRORS) {
+        for (String u : DataViews.UPDATE_MIRRORS) {
             try {
                 java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(u).openConnection();
                 c.setConnectTimeout(5000); c.setReadTimeout(8000);
@@ -101,7 +101,7 @@ public class UpdateBanner {
             bar.setClickable(true);
 
             TextView tv = new TextView(act);
-            tv.setText("🔄 fuck lark 有新版 v" + vn + "（当前 v" + AntiRecall.MODULE_VERSION + "）· 点击更新");
+            tv.setText("🔄 FeishuKit 有新版 v" + vn + "（当前 v" + AntiRecall.MODULE_VERSION + "）· 点击更新");
             tv.setTextColor(Color.WHITE);
             tv.setTextSize(14f);
             bar.addView(tv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -116,7 +116,7 @@ public class UpdateBanner {
 
             bar.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
-                    if (durl != null && !durl.isEmpty()) FuckLarkSettings.openUrl(v.getContext(), durl);
+                    if (durl != null && !durl.isEmpty()) DataViews.openUrl(v.getContext(), durl);
                 }
             });
             close.setOnClickListener(new View.OnClickListener() {

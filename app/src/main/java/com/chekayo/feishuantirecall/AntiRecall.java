@@ -54,8 +54,8 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
         g_lark_mark = 0;
         return false;
     }
-    static final String MODULE_VERSION = "1.7.2";
-    static final int MODULE_VERSION_CODE = 20;   // 与 AndroidManifest versionCode 同步; 更新检查比对用
+    static final String MODULE_VERSION = "1.8.1";
+    static final int MODULE_VERSION_CODE = 23;   // 与 AndroidManifest versionCode 同步; 更新检查比对用
     static final String MAPPER = "ax2.b";
 
     // 签名自校验: 运行 APK 的证书 SHA-256(=SHA256(signature.toByteArray()))。重打包必须重签名 -> 证书变 -> 检测到篡改。
@@ -78,7 +78,7 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
     /** JNI: 走专属 logcat tag "antiread-j" (避开被其它模块刷爆的 LSPosedFramework). */
     public static native void nativeLog(String s);
 
-    /** JNI: fuck lark 设置面板实时开关防撤回中和. */
+    /** JNI: FeishuKit 设置面板实时开关防撤回中和. */
     public static native void nativeSetRecall(boolean on);
 
     /** JNI: 诊断日志开关 (关=native flog 完全不写文件). */
@@ -101,8 +101,75 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
         MODULE_PATH = sp.modulePath;
     }
 
+    static volatile boolean CONFIG_BRIDGE_INSTALLED = false;
+
+    /** 跨进程配置桥：Application 就绪后 setContext + 注册 ACTION_SYNC（EXPORTED）。 */
+    static void installConfigBridge() {
+        if (CONFIG_BRIDGE_INSTALLED) return;
+        CONFIG_BRIDGE_INSTALLED = true;
+        try {
+            Object app = XposedHelpers.callStaticMethod(Class.forName("android.app.AndroidAppHelper"), "currentApplication");
+            if (app instanceof android.content.Context) {
+                bindConfigBridge((android.content.Context) app);
+                return;
+            }
+        } catch (Throwable ignored) {}
+        try {
+            XposedHelpers.findAndHookMethod(android.app.Instrumentation.class, "callApplicationOnCreate",
+                    android.app.Application.class, new XC_MethodHook() {
+                @Override protected void afterHookedMethod(MethodHookParam p) {
+                    try {
+                        if (p.args[0] instanceof android.content.Context) {
+                            bindConfigBridge((android.content.Context) p.args[0]);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            });
+        } catch (Throwable t) {
+            XposedBridge.log("[fucklark] config bridge defer failed: " + t);
+        }
+    }
+
+    static void bindConfigBridge(final android.content.Context c) {
+        try {
+            Config.setContext(c);
+            android.content.BroadcastReceiver receiver = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context x, android.content.Intent i) {
+                    String act = i.getAction();
+                    if (Config.ACTION_SYNC.equals(act)) {
+                        Config.onSyncReceive(i.getStringExtra("json"));
+                        try {
+                            nativeSetRecall(Config.antirecall);
+                            nativeSetKeepKicked(Config.keepkicked);
+                            nativeSetDiag(Config.diaglog);
+                            nativeSetLeaveNotify(Config.leavenotify);
+                        } catch (Throwable ignored) {}
+                    } else if (ArchiveSync.ACTION_PULL.equals(act)) {
+                        // 桌面入口请求档案副本 → 推 profiles + 离职名单
+                        ArchiveSync.pushAll();
+                    }
+                }
+            };
+            android.content.IntentFilter syncFilter = new android.content.IntentFilter();
+            syncFilter.addAction(Config.ACTION_SYNC);
+            syncFilter.addAction(ArchiveSync.ACTION_PULL);
+            // 必须 EXPORTED：发送方是模块桌面进程（另一 UID），NOT_EXPORTED 会收不到
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                c.registerReceiver(receiver, syncFilter, android.content.Context.RECEIVER_EXPORTED);
+            } else {
+                c.registerReceiver(receiver, syncFilter);
+            }
+            XposedBridge.log("[fucklark] config bridge bound pkg=" + c.getPackageName());
+            // Context 就绪后再与模块权威源对齐一次（handleLoadPackage 早期可能 context 还是 null）
+            try { Config.loadAndAnnounce(); } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            XposedBridge.log("[fucklark] config bridge bind failed: " + t);
+        }
+    }
+
     @Override
     public void handleLoadPackage(LoadPackageParam lpparam) {
+        installConfigBridge();
         if (!isLarkFamily(lpparam.packageName) && !isLarkApp(lpparam.classLoader)) return;
         PKG = lpparam.packageName;   // 锁定当前目标(进程内唯一), 下游 dataDir/getPackageInfo 随之自适应
 
@@ -113,7 +180,7 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
             File fdir = larkFilesDir();
             Config.setFilesDir(fdir);        // 每进程都设: 让 Config.notifarchive 能从磁盘读到
             NotifArchive.setFilesDir(fdir);
-            try { Config.load(); } catch (Throwable ignored) {}
+            try { Config.loadAndAnnounce(); } catch (Throwable ignored) {}
             installNotifHook();
         } catch (Throwable t) { XposedBridge.log("[fucklark] notif archive init failed: " + t); }
 
@@ -351,10 +418,17 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
         try { Config.setFilesDir(filesDir); Diag.setFilesDir(filesDir); } catch (Throwable t) { XposedBridge.log("[antirecall] setFilesDir err " + t); }
         try { nativeSetDataDir(filesDir.getAbsolutePath()); } catch (Throwable t) { XposedBridge.log("[antirecall] nativeSetDataDir err " + t); }
 
-        // fuck lark: 读配置 + 按开关设防撤回/诊断状态 (即时生效; 须在写日志前, 否则 diaglog 还是默认值)
-        try { Config.load(); nativeSetRecall(Config.antirecall); nativeSetDiag(Config.diaglog); nativeSetKeepKicked(Config.keepkicked); nativeSetLeaveNotify(Config.leavenotify);
-              XposedBridge.log("[fucklark] antirecall=" + Config.antirecall + " resign=" + Config.resign + " diaglog=" + Config.diaglog + " keepkicked=" + Config.keepkicked + " leavenotify=" + Config.leavenotify); }
-        catch (Throwable t) { XposedBridge.log("[fucklark] config init err " + t); }
+        // FeishuKit: 读配置 + 与模块权威源对齐 + 按开关设防撤回/诊断状态
+        // 注意: 不能只 load() 本地旧文件——会把刚同步到的配置冲掉
+        try {
+            Config.loadAndAnnounce();
+            nativeSetRecall(Config.antirecall); nativeSetDiag(Config.diaglog);
+            nativeSetKeepKicked(Config.keepkicked); nativeSetLeaveNotify(Config.leavenotify);
+            XposedBridge.log("[fucklark] antirecall=" + Config.antirecall + " resign=" + Config.resign
+                    + " antiread=" + Config.antiread + " diaglog=" + Config.diaglog
+                    + " keepkicked=" + Config.keepkicked + " leavenotify=" + Config.leavenotify
+                    + " updatedAt=" + Config.updatedAt());
+        } catch (Throwable t) { XposedBridge.log("[fucklark] config init err " + t); }
 
         // 诊断日志: 环境信息(每次冷启动一条, 仅在诊断开关开启时写)。飞书 versionName 在 Installer 线程解析。
         Diag.w("==== 模块启动 v" + MODULE_VERSION

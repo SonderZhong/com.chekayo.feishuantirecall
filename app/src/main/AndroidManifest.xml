@@ -1,40 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.chekayo.feishuantirecall"
-    android:versionCode="20"
-    android:versionName="1.7.2">
+    android:versionCode="23"
+    android:versionName="1.8.1">
 
     <uses-sdk android:minSdkVersion="22" android:targetSdkVersion="34" />
 
     <application
         android:allowBackup="false"
         android:extractNativeLibs="true"
-        android:label="fuck lark">
+        android:label="FeishuKit"
+        android:icon="@drawable/module_logo">
 
         <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="fuck lark：飞书防撤回（原文+撤回提示并存，兼容7.70.x）+ 离职同事统计（设置页开关）" />
+        <meta-data android:name="xposeddescription" android:value="FeishuKit：飞书防撤回 / 防已读 / 离职档案。设置：桌面图标或 LSPosed 模块详情页打开" />
         <meta-data android:name="xposedminversion" android:value="82" />
         <meta-data android:name="xposedscope" android:resource="@array/xposedscope" />
 
-        <!-- launcher 占位 Activity: 让模块有桌面图标 + 被系统认作"可启动 app",
-             从而「无障碍 → 已下载的应用」列表能显示「fuck lark 组织巡游」开关条目。
-             启动即跳转到系统无障碍设置页。 -->
+        <!--
+          模块设置页（也是桌面入口）。
+          LSPosed / EdXposed 模块详情里的「启动/设置」会走 MAIN+LAUNCHER 的 Launch Intent，
+          因此必须保持本 Activity exported + enabled，并带 LAUNCHER category。
+        -->
         <activity
             android:name=".LauncherActivity"
-            android:label="fuck lark"
-            android:exported="true">
+            android:label="FeishuKit 设置"
+            android:exported="true"
+            android:enabled="true"
+            android:theme="@style/FeishuKitLauncher"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- 组织架构自动巡游:AccessibilityService 跑在模块自己的进程(com.chekayo.feishuantirecall),
-             从外部驱动飞书 UI(进入组织树页时自动 DFS 走遍全部部门,触发懒加载)。
-             用户须在系统「无障碍」里手动开启本服务;开启后仅作用于飞书(见 xml 配置 packageNames)。 -->
+        <!-- 配置权威源：飞书进程经 ContentProvider 与模块进程对齐 fucklark_cfg.json -->
+        <provider
+            android:name=".ConfigProvider"
+            android:authorities="com.chekayo.feishuantirecall.config"
+            android:exported="true"
+            android:grantUriPermissions="false" />
+
+        <!-- 同事档案/离职名单副本接收：飞书侧 ArchiveSync 显式包名广播（兼容 Android 11+ 包可见性） -->
+        <receiver
+            android:name=".ArchiveSync$Receiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.chekayo.feishuantirecall.ARCHIVE_PUSH" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 组织架构自动巡游:AccessibilityService 跑在模块自己的进程 -->
         <service
             android:name=".OrgWalkerService"
-            android:label="fuck lark 组织巡游"
+            android:label="FeishuKit 组织巡游"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="false">
             <intent-filter>
