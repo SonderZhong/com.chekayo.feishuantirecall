@@ -72,6 +72,7 @@ $env:JAVA_HOME = $JDKHOME
 $env:Path = "$JDK;" + $env:Path
 
 $javac = Join-Path $JDK 'javac.exe'
+$java  = Join-Path $JDK 'java.exe'
 $jar   = Join-Path $JDK 'jar.exe'
 
 # 验证 JDK 版本 >= 11
@@ -311,8 +312,17 @@ $srcFiles = Get-ChildItem "$PROJ\app\src\main\java" -Recurse -Filter *.java | Fo
 if ($LASTEXITCODE) { throw "javac module failed" }
 
 Write-Host "`n== 3. d8 -> classes.dex (no desugar) =="
+# Windows 命令行长度限制(~32K): 类文件多时逐个传参会超限。d8 支持 @argfile, 每行一个路径。
+# 另: build-tools 34 的 d8 8.2 解析 JDK22 javac 产物的部分匿名类会 NPE,
+#     若存在 build/tools/r8.jar(新版 R8, 含修复)则优先用它跑 D8。
 $classFiles = Get-ChildItem "$build\app" -Recurse -Filter *.class | ForEach-Object { $_.FullName }
-& $d8 --min-api 22 --no-desugaring --output "$build" $classFiles
+$classFiles | Set-Content -Encoding ascii "$build\d8_args.txt"
+$r8Jar = Join-Path $PROJ 'tools\r8.jar'
+if (Test-Path $r8Jar) {
+  & $java -cp $r8Jar com.android.tools.r8.D8 --min-api 22 --no-desugaring --output "$build" "@$build\d8_args.txt"
+} else {
+  & $d8 --min-api 22 --no-desugaring --output "$build" "@$build\d8_args.txt"
+}
 if ($LASTEXITCODE) { throw "d8 failed" }
 
 Write-Host "`n== 4. aapt2 compile + link =="
