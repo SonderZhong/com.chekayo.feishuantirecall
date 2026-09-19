@@ -1,7 +1,7 @@
 {
   "versionCode": 23,
-  "versionName": "1.8.1",
-  "changelog": "· 全员档案分类：同事 / 离职 / 外部 / 机器人；有部门或邮箱算同事，无部门且无邮箱算机器人\n· 全员档案支持左右切页签、上下滑动列表，离职页展示冻结与记录时间\n· 同事档案与离职名单可同步到模块侧查看\n· 修复桌面赞赏码加载失败\n· 配置双端同步更稳，减少卡顿与掉帧\n· 统一对外名称为 FeishuKit，设置入口更完整",
+  "versionName": "1.8.2",
+  "changelog": "· 飞书设置入口改为独立卡片「模块设置」，字号与右侧图标随原生设置项自适应",
   "channel": "https://t.me/fucklark",
   "downloads": [
     "https://t.me/fucklark",

@@ -27,7 +27,7 @@ final class SettingsPanel {
         final boolean tampered = readTampered();
         final LinearLayout root = buildRoot(ctx, /*standalone=*/false, tampered);
         new AlertDialog.Builder(ctx)
-                .setTitle("FeishuKit 设置")
+                .setTitle("模块设置")
                 .setView(root)
                 .setPositiveButton("完成", null)
                 .show();
@@ -293,7 +293,7 @@ final class SettingsPanel {
 
         if (standalone) {
             TextView hint = new TextView(ctx);
-            hint.setText("说明：记录数据保存在飞书应用目录内，需在飞书设置页的 FeishuKit 入口中查看完整列表。");
+            hint.setText("说明：记录数据保存在飞书应用目录内，需在飞书「设置 → 模块设置」中查看完整列表。");
             hint.setTextSize(12);
             hint.setTextColor(Ui.muteColor(ctx));
             hint.setPadding(Ui.dp(ctx, 16), Ui.dp(ctx, 12), Ui.dp(ctx, 16), 0);
@@ -592,7 +592,7 @@ final class SettingsPanel {
         TextView sub = new TextView(ctx);
         sub.setText(standalone
                 ? "飞书增强模块 · 桌面配置"
-                : "v" + DataViews.moduleVersion());
+                : "模块设置 · v" + DataViews.moduleVersion());
         sub.setTextSize(12);
         sub.setTextColor(Ui.subColor(ctx));
         sub.setPadding(0, Ui.dp(ctx, 2), 0, 0);

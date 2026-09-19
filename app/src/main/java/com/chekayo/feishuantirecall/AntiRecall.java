@@ -54,7 +54,7 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
         g_lark_mark = 0;
         return false;
     }
-    static final String MODULE_VERSION = "1.8.1";
+    static final String MODULE_VERSION = "1.8.2";
     static final int MODULE_VERSION_CODE = 23;   // 与 AndroidManifest versionCode 同步; 更新检查比对用
     static final String MAPPER = "ax2.b";
 

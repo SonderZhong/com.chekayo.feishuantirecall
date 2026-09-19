@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.chekayo.feishuantirecall"
     android:versionCode="23"
-    android:versionName="1.8.1">
+    android:versionName="1.8.2">
 
     <uses-sdk android:minSdkVersion="22" android:targetSdkVersion="34" />
 
@@ -13,7 +13,7 @@
         android:icon="@drawable/module_logo">
 
         <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="FeishuKit：飞书防撤回 / 防已读 / 离职档案。设置：桌面图标或 LSPosed 模块详情页打开" />
+        <meta-data android:name="xposeddescription" android:value="FeishuKit：防撤回 / 防已读 / 离职档案。设置在飞书「设置 → 实验室」后的「模块设置」" />
         <meta-data android:name="xposedminversion" android:value="82" />
         <meta-data android:name="xposedscope" android:resource="@array/xposedscope" />
 
@@ -24,7 +24,7 @@
         -->
         <activity
             android:name=".LauncherActivity"
-            android:label="FeishuKit 设置"
+            android:label="模块设置"
             android:exported="true"
             android:enabled="true"
             android:theme="@style/FeishuKitLauncher"

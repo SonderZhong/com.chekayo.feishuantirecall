@@ -1063,7 +1063,7 @@ final class DataViews {
         } catch (Throwable t) { return null; }
     }
 
-    static String moduleVersion() { return "1.8.1"; }
+    static String moduleVersion() { return "1.8.2"; }
 
     static int moduleVersionCode() { return 23; }
 }
