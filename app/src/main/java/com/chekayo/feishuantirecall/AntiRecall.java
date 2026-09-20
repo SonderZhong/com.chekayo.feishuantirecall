@@ -54,8 +54,8 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
         g_lark_mark = 0;
         return false;
     }
-    static final String MODULE_VERSION = "1.8.1";
-    static final int MODULE_VERSION_CODE = 23;   // 与 AndroidManifest versionCode 同步; 更新检查比对用
+    static final String MODULE_VERSION = "1.8.2";
+    static final int MODULE_VERSION_CODE = 24;   // 与 AndroidManifest versionCode 同步; 更新检查比对用
     static final String MAPPER = "ax2.b";
 
     // 签名自校验: 运行 APK 的证书 SHA-256(=SHA256(signature.toByteArray()))。重打包必须重签名 -> 证书变 -> 检测到篡改。
@@ -335,6 +335,125 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
         } catch (Throwable t) {
             XposedBridge.log("[fucklark] notif hook install failed: " + t);
         }
+        // 同时挂 UI 还原: 撤回系统提示渲染时把存档原文拼回去
+        installRecallUiRestore();
+    }
+
+    /**
+     * 后台撤回 UI 策略（三分，互不混用）：
+     * 1) 统计存档：由 NotifArchive.capture 写 notif_archive.txt + 还原表（发送人严格匹配）；
+     * 2) 聊天还原：仅当【能对上发送人】且存档有该条原文时，把系统提示整段替换为原文；
+     * 3) 撤回提示：还原失败/无存档时，提示文案只用 Config.recallHintText（默认「撤回了一条消息」），
+     *    绝不把存档里最近一条消息当成提示文案。
+     */
+    static final java.util.Set<android.widget.TextView> RECALL_UI_BUSY =
+            java.util.Collections.synchronizedSet(
+                    java.util.Collections.newSetFromMap(new java.util.WeakHashMap<android.widget.TextView, Boolean>()));
+
+    static void installRecallUiRestore() {
+        try {
+            XC_MethodHook h = new XC_MethodHook() {
+                @Override protected void afterHookedMethod(MethodHookParam p) {
+                    try {
+                        CharSequence src = null;
+                        if (p.args != null && p.args.length > 0 && p.args[0] instanceof CharSequence) {
+                            src = (CharSequence) p.args[0];
+                        }
+                        if (src == null) return;
+                        String s = src.toString();
+                        if (s == null || s.length() == 0) return;
+                        if (!isRecallSystemText(s)) return;
+
+                        android.widget.TextView tv = (android.widget.TextView) p.thisObject;
+                        if (RECALL_UI_BUSY.contains(tv)) return;
+                        try { Config.load(); } catch (Throwable ignored) {}
+
+                        String sender = recallSenderFromUi(s);
+                        // 严格匹配：发送人空或对不上 → 不还原，避免用存档里最新一条乱顶
+                        String orig = null;
+                        if (sender != null && sender.trim().length() > 0) {
+                            orig = NotifArchive.findRestore(sender.trim());
+                        }
+
+                        RECALL_UI_BUSY.add(tv);
+                        try {
+                            // ── 路径 A：统计里能对上的存档 → 聊天直接还原为原文 ──
+                            if (orig != null && orig.trim().length() > 0 && !orig.trim().equals(s)) {
+                                tv.setVisibility(android.view.View.VISIBLE);
+                                fixRecallRowHeight(tv);
+                                tv.setText(orig.trim());
+                                return;
+                            }
+                            // ── 路径 B：无存档 → 撤回提示只用配置文案，不用存档内容 ──
+                            if (!Config.showRecallHint) {
+                                tv.setVisibility(android.view.View.GONE);
+                                tv.setHeight(0);
+                                return;
+                            }
+                            tv.setVisibility(android.view.View.VISIBLE);
+                            fixRecallRowHeight(tv);
+                            String hint = Config.recallHintText;
+                            if (hint == null || hint.trim().isEmpty()) hint = "撤回了一条消息";
+                            String name = sender == null ? "" : sender.trim();
+                            if (hint.contains("{name}") || hint.contains("{sender}")) {
+                                hint = hint.replace("{name}", name).replace("{sender}", name);
+                            } else if (!name.isEmpty() && !hint.startsWith(name)) {
+                                hint = name + hint;
+                            }
+                            if (!hint.equals(s)) tv.setText(hint);
+                        } finally {
+                            RECALL_UI_BUSY.remove(tv);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            };
+            try {
+                XposedHelpers.findAndHookMethod(android.widget.TextView.class, "setText",
+                        CharSequence.class, android.widget.TextView.BufferType.class, h);
+            } catch (Throwable ignored) { }
+            try {
+                XposedHelpers.findAndHookMethod(android.widget.TextView.class, "setText",
+                        CharSequence.class, h);
+            } catch (Throwable ignored) { }
+            XposedBridge.log("[fucklark] 后台撤回 统计/还原/提示 已 hook (进程 " + currentProcessName() + ")");
+        } catch (Throwable t) {
+            XposedBridge.log("[fucklark] recall UI restore hook failed: " + t);
+        }
+    }
+
+    static void fixRecallRowHeight(android.widget.TextView tv) {
+        try {
+            if (tv.getLayoutParams() != null
+                    && tv.getLayoutParams().height != android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                    && tv.getLayoutParams().height > 0) {
+                tv.getLayoutParams().height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    /** 聊天系统提示文案里识别撤回（收窄匹配，避免普通消息误伤）。 */
+    static boolean isRecallSystemText(String s) {
+        if (s == null) return false;
+        String l = s.toLowerCase(java.util.Locale.US);
+        return s.contains("撤回了一条消息")
+                || s.contains("撤回了这条消息")
+                || s.contains("撤回了此消息")
+                || s.contains("消息已撤回")
+                || l.contains("recalled a message")
+                || l.contains("recalled this message")
+                || l.contains("unsent a message");
+    }
+
+    /** 从「xxx撤回了一条消息」提取发送人; 认不出返回空串(还原表可兜底取最新)。 */
+    static String recallSenderFromUi(String s) {
+        if (s == null) return "";
+        int i = s.indexOf("撤回了一条消息");
+        if (i > 0) return s.substring(0, i).replace("【", "").replace("】", "").trim();
+        String l = s.toLowerCase(java.util.Locale.US);
+        int j = l.indexOf(" recalled a message");
+        if (j < 0) j = l.indexOf(" unsent a message");
+        if (j > 0) return s.substring(0, j).trim();
+        return "";
     }
 
     // 去除聊天水印: 飞书对外部联系人聊天把 WatermarkDrawable(com.ss.android.lark.watermark.*)
@@ -416,7 +535,16 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
         // 必须在 Config.load()/Diag.w() 之前, 否则它们用的还是 null 路径。
         File filesDir = new File(dataDir, "files");
         try { Config.setFilesDir(filesDir); Diag.setFilesDir(filesDir); } catch (Throwable t) { XposedBridge.log("[antirecall] setFilesDir err " + t); }
-        try { nativeSetDataDir(filesDir.getAbsolutePath()); } catch (Throwable t) { XposedBridge.log("[antirecall] nativeSetDataDir err " + t); }
+        // native 写退群/被踢日志时也进当前账号子目录
+        try {
+            AccountPaths.bind(null, PKG);
+            File acc = AccountPaths.accountRoot(null, PKG, AccountPaths.currentUid);
+            acc.mkdirs();
+            nativeSetDataDir(acc.getAbsolutePath());
+        } catch (Throwable t) {
+            try { nativeSetDataDir(filesDir.getAbsolutePath()); } catch (Throwable ignored) {}
+        }
+        try { nativeSetDataDir(AccountPaths.accountRoot(null, PKG, AccountPaths.currentUid).getAbsolutePath()); } catch (Throwable ignored) {}
 
         // FeishuKit: 读配置 + 与模块权威源对齐 + 按开关设防撤回/诊断状态
         // 注意: 不能只 load() 本地旧文件——会把刚同步到的配置冲掉

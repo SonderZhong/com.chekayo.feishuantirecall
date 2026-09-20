@@ -47,6 +47,10 @@ public class Config {
     public static volatile String pubdownloadSubdir = "Lark";  // 公共下载子目录名 (空=直接 Download/; 默认 Download/Lark)
     public static volatile boolean updatebanner = true;  // 主页顶部更新横幅(有新版时提示)
     public static volatile int dismissedUpc = 0;         // 已忽略的更新 versionCode(× 关闭后记住, 不再唠叨)
+    // ── 防撤回展示选项 ──
+    public static volatile boolean showRecallHint = true;      // 是否展示「xxx撤回了一条消息」提示
+    public static volatile boolean recallHintOriginal = true;  // 撤回提示是否附带原文
+    public static volatile String recallHintText = "撤回了一条消息"; // 可自定义提示文案（可用 {name} 代表发送人）
 
     // 由 AntiRecall.startNative / LauncherActivity / SettingsPanel 调 setFilesDir 初始化(按当前目标包, 国内/国际版自适应)。
     static volatile File cfgFile;
@@ -97,6 +101,9 @@ public class Config {
             o.put("downloadunlock",downloadunlock); o.put("restrictunlock",restrictunlock); o.put("pubdownload",pubdownload);
             o.put("screenshotnoaudit",screenshotnoaudit); o.put("forcescreenshot",forcescreenshot); o.put("noauditall",noauditall);
             o.put("pubdownloadSubdir",pubdownloadSubdir); o.put("updatebanner",updatebanner); o.put("dismissedUpc",dismissedUpc);
+            o.put("showRecallHint", showRecallHint);
+            o.put("recallHintOriginal", recallHintOriginal);
+            o.put("recallHintText", recallHintText);
             return o.toString();
         } catch (Throwable t) { return "{}"; }
     }
@@ -120,6 +127,9 @@ public class Config {
             downloadunlock=o.optBoolean("downloadunlock",false); restrictunlock=o.optBoolean("restrictunlock",false); pubdownload=o.optBoolean("pubdownload",false);
             screenshotnoaudit=o.optBoolean("screenshotnoaudit",false); forcescreenshot=o.optBoolean("forcescreenshot",false); noauditall=o.optBoolean("noauditall",false);
             pubdownloadSubdir=o.optString("pubdownloadSubdir","Lark"); updatebanner=o.optBoolean("updatebanner",true); dismissedUpc=o.optInt("dismissedUpc",0);
+            showRecallHint = o.optBoolean("showRecallHint", true);
+            recallHintOriginal = o.optBoolean("recallHintOriginal", true);
+            recallHintText = o.optString("recallHintText", "撤回了一条消息");
             save();
             return true;
         } catch (Throwable t) { return false; }
@@ -164,6 +174,9 @@ public class Config {
                 pubdownloadSubdir = o.optString("pubdownloadSubdir", "Lark");
                 updatebanner = o.optBoolean("updatebanner", true);
                 dismissedUpc = o.optInt("dismissedUpc", 0);
+                showRecallHint = o.optBoolean("showRecallHint", true);
+                recallHintOriginal = o.optBoolean("recallHintOriginal", true);
+                recallHintText = o.optString("recallHintText", "撤回了一条消息");
             } else {
                 // 首次无本地文件：不立刻 save（多进程会互相覆盖成默认值）。由 sync 对齐后再落盘。
             }
@@ -189,6 +202,8 @@ public class Config {
         else if ("forcescreenshot".equals(key)) { changed = forcescreenshot != v; forcescreenshot = v; }
         else if ("noauditall".equals(key)) { changed = noauditall != v; noauditall = v; }
         else if ("updatebanner".equals(key)) { changed = updatebanner != v; updatebanner = v; }
+        else if ("showRecallHint".equals(key)) { changed = showRecallHint != v; showRecallHint = v; }
+        else if ("recallHintOriginal".equals(key)) { changed = recallHintOriginal != v; recallHintOriginal = v; }
         if (!changed) return;
         updatedAt = System.currentTimeMillis();
         save();
@@ -203,15 +218,31 @@ public class Config {
         broadcast();
     }
 
-    // 字符串配置(目前仅 pubdownloadSubdir)。子目录名做基本清洗: 去首尾空白与斜杠, 拦非法字符。
+    // 字符串配置(目前仅 pubdownloadSubdir / recallHintText)。子目录名做基本清洗。
     public static synchronized void setStr(String key, String v) {
-        if (!"pubdownloadSubdir".equals(key)) return;
-        String nv = sanitizeSubdir(v);
-        if (nv.equals(pubdownloadSubdir)) return;
-        pubdownloadSubdir = nv;
+        if ("pubdownloadSubdir".equals(key)) {
+            String nv = sanitizeSubdir(v);
+            if (nv.equals(pubdownloadSubdir)) return;
+            pubdownloadSubdir = nv;
+        } else if ("recallHintText".equals(key)) {
+            String nv = sanitizeRecallHint(v);
+            if (nv.equals(recallHintText)) return;
+            recallHintText = nv;
+        } else {
+            return;
+        }
         updatedAt = System.currentTimeMillis();
         save();
         broadcast();
+    }
+
+    /** 撤回提示文案清洗：去空白，默认「撤回了一条消息」；保留 {name}/{sender} 占位。 */
+    static String sanitizeRecallHint(String s) {
+        if (s == null) return "撤回了一条消息";
+        s = s.trim().replace('\n', ' ').replace('\r', ' ');
+        if (s.isEmpty()) return "撤回了一条消息";
+        if (s.length() > 40) s = s.substring(0, 40);
+        return s;
     }
 
     /** 向国内版、国际版飞书和模块自身发送最新配置（跨应用，接收端须 EXPORTED）。不发本包。 */
@@ -322,6 +353,9 @@ public class Config {
             o.put("pubdownloadSubdir", pubdownloadSubdir);
             o.put("updatebanner", updatebanner);
             o.put("dismissedUpc", dismissedUpc);
+            o.put("showRecallHint", showRecallHint);
+            o.put("recallHintOriginal", recallHintOriginal);
+            o.put("recallHintText", recallHintText);
             File dir = cfgFile.getParentFile();
             if (dir != null && !dir.isDirectory()) dir.mkdirs();   // 定制飞书 files 目录可能尚未创建
             write(cfgFile, o.toString());

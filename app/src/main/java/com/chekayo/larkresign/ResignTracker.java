@@ -92,85 +92,99 @@ public class ResignTracker implements IXposedHookLoadPackage, IXposedHookZygoteI
     static void start(final Context ctx) throws Exception {
         // 配置按当前目标包走(国内/国际版自适应; 与 AntiRecall 同主进程, 幂等)
         try { Config.setFilesDir(ctx.getFilesDir()); } catch (Throwable t) { XposedBridge.log(TAG + ": setFilesDir err " + t); }
+        // 探测当前登录账号：档案/离职数据按账号隔离，避免多账号混写
+        try {
+            com.chekayo.feishuantirecall.AccountPaths.bind(ctx, PKG);
+        } catch (Throwable t) { XposedBridge.log(TAG + ": AccountPaths.bind err " + t); }
 
         // 抽 native .so 到私有目录并加载
         File dataDir = ctx.getFilesDir().getParentFile();
-        File outDir = new File(ctx.getFilesDir(), "resign_tracker");
-        outDir.mkdirs();
+        try {
+            com.chekayo.feishuantirecall.AccountPaths.bind(ctx, PKG);
+        } catch (Throwable t) { XposedBridge.log(TAG + ": AccountPaths.bind err " + t); }
         File so = new File(new File(dataDir, "resign_tracker_lib"), "libresign.so");
         so.getParentFile().mkdirs();
         extractSo(so);
         System.load(so.getAbsolutePath());
-        XposedBridge.log(TAG + ": native loaded " + so.getAbsolutePath());
+        XposedBridge.log(TAG + ": native loaded " + so.getAbsolutePath()
+                + " uid=" + com.chekayo.feishuantirecall.AccountPaths.currentUid);
 
-        final File allFile = new File(outDir, "resigned_all.json");
-        final File snapFile = new File(outDir, "resigned_latest.json");
-        final File profJsonl = new File(outDir, "v3_bulk.jsonl");   // native 落 blob(临时)
-        final File profJson  = new File(outDir, "profiles.json");   // append-only 富资料档案
-        final File rosterJsonl = new File(outDir, "roster.jsonl"); // native 落全量花名册(临时)
-        final File rosterJson  = profJson;                         // 全员并入同一 profiles.json(补齐姓名)
-
+        final Context appCtx = ctx;
         Thread t = new Thread(new Runnable() {
             @Override public void run() {
-                // 1) 等 libsqlcipher 加载 + 装 hook
-                for (int i = 0; i < 600; i++) {           // ~90s
+                for (int i = 0; i < 600; i++) {
                     try { if (nativeInit()) break; } catch (Throwable e) { XposedBridge.log(TAG + ": nativeInit err " + e); return; }
                     sleep(150);
                 }
                 XposedBridge.log(TAG + ": nativeInit done, 等待 contact.db 句柄...");
-                // 2) 周期 dump + 并入累计记录 (先密后疏)
                 long[] delays = {8000, 15000, 30000, 60000, 120000, 300000};
                 int idx = 0;
-                int profTick = 0;   // V3 富资料 dump 较重(全表 blob), 隔几轮才抓一次
-                int rosterTick = 0; // 全量花名册 dump(全员), 比 V3 更重, 隔更多轮抓一次
+                int profTick = 0;
+                int rosterTick = 0;
                 while (true) {
                     try {
                         Config.load();
-                        if (!Config.resign) { sleep(30000); continue; }   // FeishuKit 开关: 关了就不采集
-                        nativeArmDump(snapFile.getAbsolutePath());
+                        if (!Config.resign) { sleep(30000); continue; }
+
+                        // 1) 探测当前登录账号 → 输出目录 files/accounts/<uid>/resign_tracker
+                        String uid = com.chekayo.feishuantirecall.AccountPaths.detectUid(appCtx);
+                        if (uid != null && !uid.isEmpty()) {
+                            com.chekayo.feishuantirecall.AccountPaths.currentUid = uid;
+                        }
+                        File outDir = com.chekayo.feishuantirecall.AccountPaths.resignDir(appCtx, PKG,
+                                com.chekayo.feishuantirecall.AccountPaths.currentUid);
+                        if (outDir != null && !outDir.isDirectory()) outDir.mkdirs();
+
+                        File accAll = new File(outDir, "resigned_all.json");
+                        File accSnap = new File(outDir, "resigned_latest.json");
+                        File accProfJl = new File(outDir, "v3_bulk.jsonl");
+                        File accProf = new File(outDir, "profiles.json");
+                        File accRosterJl = new File(outDir, "roster.jsonl");
+
+                        // 2) 离职快照
+                        nativeArmDump(accSnap.getAbsolutePath());
                         int rc = -999;
-                        for (int k = 0; k < 60; k++) {       // 等下一次 contact.db prepare 完成 dump, 最多 ~30s
+                        for (int k = 0; k < 60; k++) {
                             rc = nativePoll();
                             if (rc >= 0) break;
                             sleep(500);
                         }
                         if (rc >= 0) {
-                            int merged = mergeInto(allFile, snapFile);
-                            XposedBridge.log(TAG + ": 离职快照=" + rc + " 累计存档=" + merged
-                                    + " -> " + allFile.getAbsolutePath());
-                            // 离职名单推副本到模块进程，桌面「记录→离职名单」才能读到
+                            int merged = mergeInto(accAll, accSnap);
+                            XposedBridge.log(TAG + ": 离职快照=" + rc + " 累计=" + merged
+                                    + " uid=" + uid + " -> " + accAll.getAbsolutePath());
                             if (merged >= 0) {
-                                com.chekayo.feishuantirecall.ArchiveSync.pushAll();
+                                try { com.chekayo.feishuantirecall.ArchiveSync.pushAll(); } catch (Throwable ignored) {}
                             }
                         }
-                        // rc==-1: contact.db 句柄还没抓到 (还没查过联系人), 下轮继续
 
-                        // 每 3 轮抓一次 V3 富资料(部门/邮箱/工号/职务/上级 + 外部公司名), append-only 并入 profiles.json
+                        // 3) V3 富资料 → 当前账号 profiles.json
                         if (profTick++ % 3 == 0) {
                             try {
-                                nativeArmProfiles(profJsonl.getAbsolutePath());
+                                nativeArmProfiles(accProfJl.getAbsolutePath());
                                 int prc = -999;
                                 for (int k = 0; k < 60; k++) { prc = nativeProfileResult(); if (prc >= 0) break; sleep(500); }
                                 if (prc >= 0) {
-                                    int n = ProfileBulk.merge(profJsonl, profJson);
-                                    XposedBridge.log(TAG + ": V3富资料 dump=" + prc + " 并入档案=" + n + " -> " + profJson.getAbsolutePath());
-                                    com.chekayo.feishuantirecall.ArchiveSync.pushProfiles();
-                                    profJsonl.delete();   // 临时文件用完即删(可含大量 hex)
+                                    int n = ProfileBulk.merge(accProfJl, accProf);
+                                    XposedBridge.log(TAG + ": V3富资料 dump=" + prc + " 并入=" + n + " -> " + accProf.getAbsolutePath());
+                                    try { com.chekayo.feishuantirecall.ArchiveSync.pushProfiles(); } catch (Throwable ignored) {}
+                                    accProfJl.delete();
                                 }
                             } catch (Throwable pe) { XposedBridge.log(TAG + ": profile dump err " + pe); }
                         }
 
-                        // 每 5 轮抓一次全量花名册(不限 is_resigned): 配合组织架构巡游补齐全员姓名,
-                        // 无 V3 富资料的人也落 name/tenant_id -> profiles.json 里"全员档案"更全。
+                        // 4) 全量花名册 → 当前账号 profiles.json
                         if (rosterTick++ % 5 == 0) {
                             try {
-                                nativeArmRoster(rosterJsonl.getAbsolutePath());
+                                nativeArmRoster(accRosterJl.getAbsolutePath());
                                 int rrc = -999;
                                 for (int k = 0; k < 60; k++) { rrc = nativeRosterResult(); if (rrc >= 0) break; sleep(500); }
                                 if (rrc >= 0) {
-                                    int n = ProfileBulk.mergeRoster(rosterJsonl, rosterJson);
-                                    XposedBridge.log(TAG + ": 全量花名册 dump=" + rrc + " 并入档案=" + n + " -> " + rosterJson.getAbsolutePath());
-                                    rosterJsonl.delete();   // 临时文件用完即删(可含大量 hex)
+                                    int n = ProfileBulk.mergeRoster(accRosterJl, accProf);
+                                    XposedBridge.log(TAG + ": 全量花名册 dump=" + rrc + " 并入=" + n
+                                            + " uid=" + uid + " -> " + accProf.getAbsolutePath());
+                                    try { com.chekayo.feishuantirecall.ArchiveSync.pushProfiles(); } catch (Throwable ignored) {}
+                                    accRosterJl.delete();
                                 }
                             } catch (Throwable re) { XposedBridge.log(TAG + ": roster dump err " + re); }
                         }

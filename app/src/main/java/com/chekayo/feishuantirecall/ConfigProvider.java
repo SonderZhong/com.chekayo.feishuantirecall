@@ -42,12 +42,18 @@ public class ConfigProvider extends ContentProvider {
             // arg = 文件名（profiles.json / resigned_all.json），extras.data = 内容
             if ("putFile".equals(method) && arg != null && extras != null) {
                 String name = arg.replace("..", "").replace("/", "_").replace("\\", "_");
-                if (!name.endsWith(".json")) return null;
+                if (!(name.endsWith(".json") || name.endsWith(".txt"))) return null;
                 byte[] data = extras.getByteArray("data");
                 if (data == null) return null;
-                File dir = new File(getContext().getFilesDir(), "resign_tracker");
-                if (!dir.isDirectory()) dir.mkdirs();
-                File out = new File(dir, name);
+                // json → resign_tracker/，txt → files/ 根目录（如 notif_archive.txt）
+                File out;
+                if (name.endsWith(".txt")) {
+                    out = new File(getContext().getFilesDir(), name);
+                } else {
+                    File dir = new File(getContext().getFilesDir(), "resign_tracker");
+                    if (!dir.isDirectory()) dir.mkdirs();
+                    out = new File(dir, name);
+                }
                 FileOutputStream os = new FileOutputStream(out);
                 os.write(data);
                 os.close();
