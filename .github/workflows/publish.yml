@@ -140,4 +140,5 @@ jobs:
 
       - name: Dry-run summary
         if: ${{ inputs.dry_run }}
-        run: echo "DRY-RUN 完成: 构建与验签已执行, 发布步骤跳过(dry_run=true)"
+        run: |
+          echo "DRY-RUN 完成：构建与验签已执行，发布步骤跳过(dry_run=true)"
