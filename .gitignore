@@ -46,3 +46,4 @@ scripts/wm_extract.py
 tools/native-v163.apk
 dist/
 dist/
+.zcode/
