@@ -70,7 +70,11 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
 
       - name: Install SDK/NDK
-        run: sdkmanager "build-tools;34.0.0" "platforms;android-34" "ndk;27.2.12479018" >/dev/null
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKM" ] || SDKM="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager | head -1)"
+          echo "sdkmanager = $SDKM"
+          "$SDKM" "build-tools;34.0.0" "platforms;android-34" "ndk;27.2.12479018" >/dev/null
 
       - name: Decode signing key
         run: |
