@@ -68,7 +68,6 @@ jobs:
 
       - uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
         with: { distribution: temurin, java-version: '17' }
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
 
       - name: Install SDK/NDK
         run: sdkmanager "build-tools;34.0.0" "platforms;android-34" "ndk;27.2.12479018" >/dev/null
