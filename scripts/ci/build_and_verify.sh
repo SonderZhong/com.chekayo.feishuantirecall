@@ -23,4 +23,5 @@ if [ "$CERT" != "$EXPECT_SIG" ]; then
   exit 2
 fi
 echo "SIGNATURE_OK $CERT"
+mkdir -p "$(dirname "$OUT_APK")"
 cp feishu-antirecall.apk "$OUT_APK"

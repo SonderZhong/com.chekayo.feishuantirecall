@@ -93,7 +93,8 @@ jobs:
             bash scripts/ci/build_and_verify.sh "$GITHUB_WORKSPACE" "$EXPECT_SIG" "dist/feishukit-${{ steps.meta.outputs.vn }}-legacy.apk"
             git worktree add /tmp/wt-api102 origin/libxposed-api-102-migration
             cp scripts/ci/build_and_verify.sh /tmp/wt-api102/ 2>/dev/null || true
-            bash /tmp/wt-api102/build_and_verify.sh /tmp/wt-api102 "$EXPECT_SIG" "dist/feishukit-$(cd /tmp/wt-api102 && grep -o 'versionName="[^"]*"' app/src/main/AndroidManifest.xml | head -1 | cut -d'"' -f2)-api102.apk" || { echo "api102 build failed (preexisting) — 继续仅发 legacy"; }
+            API102_VN="$(grep -o 'versionName="[^"]*"' /tmp/wt-api102/app/src/main/AndroidManifest.xml | head -1 | cut -d'"' -f2)"
+            bash /tmp/wt-api102/build_and_verify.sh /tmp/wt-api102 "$EXPECT_SIG" "$GITHUB_WORKSPACE/dist/feishukit-${API102_VN}.apk" || { echo "api102 build failed (preexisting) — 继续仅发 legacy"; }
           else
             bash scripts/ci/build_and_verify.sh "$GITHUB_WORKSPACE" "$EXPECT_SIG" "dist/feishukit-${{ steps.meta.outputs.vn }}.apk"
           fi
