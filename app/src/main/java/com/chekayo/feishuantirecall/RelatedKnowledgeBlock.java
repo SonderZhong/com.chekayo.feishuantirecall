@@ -8,8 +8,10 @@ import android.view.ViewGroup;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.WeakHashMap;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -30,6 +32,8 @@ public final class RelatedKnowledgeBlock {
     // 下列状态仅在主线程读写。value 不持有 View，避免反向保活弱引用 key。
     private static final Map<View, Boolean> CANDIDATES = new WeakHashMap<View, Boolean>();
     private static final Map<View, State> HIDDEN = new WeakHashMap<View, State>();
+    private static final Map<android.content.res.Resources, Map<Integer, String>> RESOURCE_NAMES =
+            Collections.synchronizedMap(new WeakHashMap<android.content.res.Resources, Map<Integer, String>>());
     private static boolean installed;
     private static boolean changingVisibility;
     private static long lastLogAt;
@@ -59,8 +63,8 @@ public final class RelatedKnowledgeBlock {
             @Override protected void afterHookedMethod(MethodHookParam p) {
                 try {
                     View v = (View) p.thisObject;
-                    if (isAiNode(v) || isReplyLayout(v)
-                            || (onMainThread() && HIDDEN.containsKey(v))) schedule(v);
+                    if (onMainThread() && HIDDEN.containsKey(v) && !isAiNode(v) && !isReplyLayout(v)) restore(v);
+                    if (isAiNode(v) || isReplyLayout(v) || (onMainThread() && HIDDEN.containsKey(v))) schedule(v);
                 } catch (Throwable ignored) {}
             }
         });
@@ -133,8 +137,22 @@ public final class RelatedKnowledgeBlock {
     }
 
     private static String resourceName(View v) {
-        try { return v.getResources().getResourceEntryName(v.getId()); }
-        catch (Throwable ignored) { return ""; }
+        android.content.res.Resources resources = v.getResources();
+        int id = v.getId();
+        synchronized (RESOURCE_NAMES) {
+            Map<Integer, String> names = RESOURCE_NAMES.get(resources);
+            if (names == null) {
+                names = new HashMap<Integer, String>();
+                RESOURCE_NAMES.put(resources, names);
+            }
+            if (names.containsKey(id)) return names.get(id);
+            String name;
+            try { name = resources.getResourceEntryName(id); }
+            catch (Throwable ignored) { name = ""; }
+            // 空串也缓存，避免每个无 ID / 非应用 ID 的 View 反复抛资源异常。
+            names.put(id, name);
+            return name;
+        }
     }
 
     private static void schedule(View v) {
@@ -149,7 +167,6 @@ public final class RelatedKnowledgeBlock {
                 if (view == null) return;
                 PENDING.remove(view);
                 try {
-                    restoreInvalidViews();
                     updateTree(view, 0);
                     Object parent = view.getParent();
                     if (parent instanceof View && isReplyLayout((View) parent)) updateTree((View) parent, 0);
@@ -200,8 +217,7 @@ public final class RelatedKnowledgeBlock {
             v = (View) v.getParent();
             if (isReplyLayout(v)) { identity = v; break; }
         }
-        String content = BlockedContent.read(target);
-        BlockLog.record("相关知识", identity, via, content);
+        BlockLog.recordDeferred("相关知识", identity, via);
     }
 
     private static void setVisibility(View v, int visibility) {

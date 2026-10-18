@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.lang.ref.WeakReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -27,6 +28,22 @@ final class BlockLog {
         final Context c = Config.appContextForSync();
         if (c == null || view == null) return;
         record(kind, view, via, BlockedContent.read(view));
+    }
+
+    /** 延迟读取自绘控件，避免在消息布局/隐藏的主线程调用链里执行 view.draw。 */
+    static void recordDeferred(final String kind, View view, final String via) {
+        final Context c = Config.appContextForSync();
+        if (c == null || view == null) return;
+        final WeakReference<View> ref = new WeakReference<View>(view);
+        final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        main.postDelayed(new Runnable() {
+            @Override public void run() {
+                View target = ref.get();
+                if (target == null) return;
+                try { record(kind, target, via, BlockedContent.read(target)); }
+                catch (Throwable ignored) { record(kind, target, via, ""); }
+            }
+        }, 350);
     }
 
     static void record(final String kind, View view, final String via, final String content) {
@@ -46,6 +63,7 @@ final class BlockLog {
         final long time = now;
         IO.execute(new Runnable() {
             @Override public void run() {
+                boolean savedLocal = false;
                 try {
                     JSONObject event = new JSONObject();
                     event.put("content", content);
@@ -54,16 +72,15 @@ final class BlockLog {
                     event.put("package", c.getPackageName()); event.put("widget", widget); event.put("id", id);
                     event.put("process", android.os.Build.VERSION.SDK_INT >= 28
                             ? android.app.Application.getProcessName() : c.getPackageName());
+                    // 无论跨应用 Provider/广播是否被系统拦截，本进程始终留一份可读记录。
+                    try { appendLocal(c, event.toString()); savedLocal = true; }
+                    catch (Throwable t) { android.util.Log.w("fucklark", "本地屏蔽日志写入失败", t); }
                     Bundle args = new Bundle(); args.putString("json", event.toString());
                     Bundle result = c.getContentResolver().call(ConfigProvider.URI, "blockLogAdd", null, args);
                     if (result == null || !result.getBoolean("ok")) sendEvent(c, event.toString());
                 } catch (Throwable t) {
-                    try {
-                        JSONObject event = new JSONObject(); event.put("time", time); event.put("kind", kind);
-                        event.put("content", content); event.put("via", via); event.put("id", id);
-                        event.put("process", c.getPackageName());
-                        sendEvent(c, event.toString());
-                    } catch (Throwable ignored) { android.util.Log.w("fucklark", "屏蔽日志保存失败", t); }
+                    android.util.Log.w("fucklark", savedLocal ? "屏蔽日志跨进程发送失败；本地记录已保留"
+                            : "屏蔽日志保存失败", t);
                 }
             }
         });
@@ -132,45 +149,30 @@ final class BlockLog {
             @Override public void run() {
                 String result;
                 try {
-                    Bundle b = ctx.getContentResolver().call(ConfigProvider.URI, "blockLogGet", null, null);
-                    result = b != null && b.getString("text") != null ? b.getString("text") : readLocal(ctx);
+                    // 当前进程内直接读文件；MIUI 禁止跨应用唤醒时仍可读飞书的本地记录。
+                    if (Config.MODULE_PKG.equals(ctx.getPackageName())) result = readLocal(ctx);
+                    else {
+                        Bundle b = ctx.getContentResolver().call(ConfigProvider.URI, "blockLogGet", null, null);
+                        String remote = b == null ? null : b.getString("text");
+                        result = remote != null ? remote : localFallback(ctx);
+                    }
                 } catch (Throwable t) {
-                    requestViaBroadcast(ctx, text);
-                    return;
+                    result = localFallback(ctx);
                 }
                 final String display = result;
                 text.post(new Runnable() { @Override public void run() { text.setText(display); } });
             }
         });
     }
+    static String localFallback(Context ctx) {
+        try { return "模块配置源暂不可用，以下是当前应用的本地记录：\n\n" + readLocal(ctx); }
+        catch (Throwable t) { return "本地屏蔽日志读取失败：" + t.getClass().getSimpleName(); }
+    }
     private static void sendEvent(Context c, String json) throws Exception {
         // 不可发现 Provider 时，显式组件广播仍能跨应用传递。
-        appendLocal(c, json);
         android.content.Intent i = new android.content.Intent("com.chekayo.feishuantirecall.BLOCK_LOG_ADD");
         i.setComponent(new android.content.ComponentName(Config.MODULE_PKG, BlockLog.Receiver.class.getName()));
         i.putExtra("json", json); c.sendBroadcast(i);
-    }
-
-    private static void requestViaBroadcast(Context c, final TextView text) {
-        final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
-        final boolean[] done = { false };
-        final android.os.ResultReceiver reply = new android.os.ResultReceiver(main) {
-            @Override protected void onReceiveResult(int code, Bundle data) {
-                done[0] = true;
-                text.setText(data != null && data.getString("text") != null
-                        ? data.getString("text") : "未收到屏蔽记录，请启动桌面模块后重试。");
-            }
-        };
-        android.content.Intent i = new android.content.Intent("com.chekayo.feishuantirecall.BLOCK_LOG_GET");
-        i.setComponent(new android.content.ComponentName(Config.MODULE_PKG, BlockLog.Receiver.class.getName()));
-        i.putExtra("reply", reply);
-        try { c.sendBroadcast(i); }
-        catch (Throwable t) { done[0] = true; text.setText("无法连接模块，请启动桌面模块后重试。"); }
-        main.postDelayed(new Runnable() {
-            @Override public void run() {
-                if (!done[0]) text.setText("模块暂无响应，请启动桌面模块后重试。");
-            }
-        }, 5000);
     }
 
     public static class Receiver extends android.content.BroadcastReceiver {
