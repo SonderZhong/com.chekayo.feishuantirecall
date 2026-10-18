@@ -109,6 +109,14 @@ build.sh / build.ps1    一键构建（Linux / Windows）
 
 赞助纯属无偿鼓励，与功能无关 —— 本项目所有功能开源免费，**不含任何赞助专属内容**。
 
+## 发布自动化（GitHub Actions bot，2026-10 起）
+
+- **PR 即时检查**（`pr-check.yml`）：PR 一开即自动跑门禁（`scripts/pr_gate.sh`，评论「🤖 自动审查」到 PR）+ 无私钥编译验证，无需等维护者。
+- **统一发布**（`publish.yml`）：push tag `<vc>-<vn>`（稳定版）或 `<vc>-<vn>-api102`（预览版）→ CI 自动：双线构建 → 签名（Secrets 私钥）→ 验签（证书指纹必须等于代码钉住的 `EXPECTED_SIG`，否则硬失败）→ 主仓库双包 Release + 市场仓库单包同步 + 电报群双包相册公告置顶。
+- 安全约束：发布 workflow 仅由 tag push / 手动触发；第三方 action 钉 commit SHA；不用 `pull_request_target`；fork PR 拿不到任何 secrets。
+
+> ⚠️ **私钥风险声明（2026-10 维护者决策）**：签名私钥以 `KEYSTORE_BASE64` 存于 GitHub Secrets。私钥上云后，GitHub 账号/PAT/恶意 workflow 任一失守 = 攻击者可签出通过本模块防篡改校验的"官方更新"，且该 key 无法更换（换了老用户断升级）。缓解：tag-only 触发 + 最小权限 + action 钉 SHA + 建议为 GitHub 账号启用 2FA。回退路径：删除 secrets 与 workflows 即恢复纯本地发布（本地全流程脚本保留于 `scripts/` 与维护者机器）。
+
 ## 贡献者 / Contributors
 
 感谢每一位让 FeishuKit 变得更好的贡献者（按首次贡献时间排序）：
