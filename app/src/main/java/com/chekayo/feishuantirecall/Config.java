@@ -53,7 +53,12 @@ public class Config {
     public static volatile boolean messageTimeFormatting = false;
     public static volatile String messageTimePattern = MessageTimeFormat.DEFAULT;
     // ── 防撤回展示选项 ──
-    public static volatile boolean showRecallHint = true;      // 是否展示「xxx撤回了一条消息」提示
+    public static final int RECALL_MODE_HINT = 0;
+    public static final int RECALL_MODE_COLOR = 1;
+    public static volatile int recallDisplayMode = RECALL_MODE_COLOR;
+    public static volatile boolean showRecallHint = true;      // 是否显示保留原消息的撤回提示或颜色标识
+    public static final String DEFAULT_RECALL_BORDER_COLOR = "#E5484D";
+    public static volatile String recallBorderColor = DEFAULT_RECALL_BORDER_COLOR;
     public static volatile boolean recallHintOriginal = true;  // 撤回提示是否附带原文
     public static volatile String recallHintText = "撤回了一条消息"; // 可自定义提示文案（可用 {name} 代表发送人）
 
@@ -110,6 +115,8 @@ public class Config {
             o.put("screenshotnoaudit",screenshotnoaudit); o.put("forcescreenshot",forcescreenshot); o.put("noauditall",noauditall);
             o.put("pubdownloadSubdir",pubdownloadSubdir); o.put("updatebanner",updatebanner); o.put("dismissedUpc",dismissedUpc);
             o.put("showRecallHint", showRecallHint);
+            o.put("recallDisplayMode", recallDisplayMode);
+            o.put("recallBorderColor", recallBorderColor);
             o.put("recallHintOriginal", recallHintOriginal);
             o.put("recallHintText", recallHintText);
             o.put("blockaipeek", blockaipeek);
@@ -141,6 +148,8 @@ public class Config {
             screenshotnoaudit=o.optBoolean("screenshotnoaudit",false); forcescreenshot=o.optBoolean("forcescreenshot",false); noauditall=o.optBoolean("noauditall",false);
             pubdownloadSubdir=o.optString("pubdownloadSubdir","Lark"); updatebanner=o.optBoolean("updatebanner",true); dismissedUpc=o.optInt("dismissedUpc",0);
             showRecallHint = o.optBoolean("showRecallHint", true);
+            recallDisplayMode = sanitizeRecallDisplayMode(o.optInt("recallDisplayMode", RECALL_MODE_COLOR));
+            recallBorderColor = sanitizeRecallBorderColor(o.optString("recallBorderColor", DEFAULT_RECALL_BORDER_COLOR));
             recallHintOriginal = o.optBoolean("recallHintOriginal", true);
             recallHintText = o.optString("recallHintText", "撤回了一条消息");
             blockaipeek = o.optBoolean("blockaipeek", true);
@@ -194,6 +203,8 @@ public class Config {
                 updatebanner = o.optBoolean("updatebanner", true);
                 dismissedUpc = o.optInt("dismissedUpc", 0);
                 showRecallHint = o.optBoolean("showRecallHint", true);
+                recallDisplayMode = sanitizeRecallDisplayMode(o.optInt("recallDisplayMode", RECALL_MODE_COLOR));
+                recallBorderColor = sanitizeRecallBorderColor(o.optString("recallBorderColor", DEFAULT_RECALL_BORDER_COLOR));
                 recallHintOriginal = o.optBoolean("recallHintOriginal", true);
                 recallHintText = o.optString("recallHintText", "撤回了一条消息");
                 blockaipeek = o.optBoolean("blockaipeek", true);
@@ -245,6 +256,19 @@ public class Config {
         commitEdit("dismissedUpc", Integer.valueOf(vc));
     }
 
+    /** 更新两种撤回呈现模式，并复用现有配置 patch/广播同步协议。 */
+    public static synchronized void setRecallDisplayMode(int mode) {
+        prepareEdit();
+        int next = sanitizeRecallDisplayMode(mode);
+        if (recallDisplayMode == next) return;
+        recallDisplayMode = next;
+        commitEdit("recallDisplayMode", Integer.valueOf(next));
+    }
+
+    static int sanitizeRecallDisplayMode(int mode) {
+        return mode == RECALL_MODE_HINT ? RECALL_MODE_HINT : RECALL_MODE_COLOR;
+    }
+
     // 字符串配置(目前仅 pubdownloadSubdir / recallHintText)。子目录名做基本清洗。
     public static synchronized void setStr(String key, String v) {
         prepareEdit();
@@ -260,11 +284,21 @@ public class Config {
             String nv = sanitizeTimePattern(v);
             if (nv.equals(messageTimePattern)) return;
             messageTimePattern = nv;
+        } else if ("recallBorderColor".equals(key)) {
+            String nv = sanitizeRecallBorderColor(v);
+            if (nv.equals(recallBorderColor)) return;
+            recallBorderColor = nv;
         } else {
             return;
         }
         commitEdit(key, "pubdownloadSubdir".equals(key) ? pubdownloadSubdir
-                : "messageTimePattern".equals(key) ? messageTimePattern : recallHintText);
+                : "messageTimePattern".equals(key) ? messageTimePattern
+                : "recallBorderColor".equals(key) ? recallBorderColor : recallHintText);
+    }
+
+    static String sanitizeRecallBorderColor(String value) {
+        if (value == null || !value.matches("#[0-9a-fA-F]{6}")) return DEFAULT_RECALL_BORDER_COLOR;
+        return value.toUpperCase(java.util.Locale.US);
     }
 
     static String sanitizeTimePattern(String value) {
@@ -357,8 +391,9 @@ public class Config {
             if (!remote.equals(snapshot())) acceptAuthority(remote);
             syncError = "";
         } catch (Throwable t) {
-            syncError = String.valueOf(t);
-            android.util.Log.w("fucklark", "配置同步失败: " + t);
+            String nextError = String.valueOf(t);
+            if (!nextError.equals(syncError)) android.util.Log.w("fucklark", "配置同步失败: " + t);
+            syncError = nextError;
         }
     }
 
@@ -406,6 +441,8 @@ public class Config {
         }
         current.put("pubdownloadSubdir", sanitizeSubdir(current.optString("pubdownloadSubdir", "Lark")));
         current.put("recallHintText", sanitizeRecallHint(current.optString("recallHintText", "撤回了一条消息")));
+        current.put("recallDisplayMode", sanitizeRecallDisplayMode(current.optInt("recallDisplayMode", RECALL_MODE_COLOR)));
+        current.put("recallBorderColor", sanitizeRecallBorderColor(current.optString("recallBorderColor", DEFAULT_RECALL_BORDER_COLOR)));
         current.put("messageTimePattern", sanitizeTimePattern(current.optString("messageTimePattern", MessageTimeFormat.DEFAULT)));
         current.put("updatedAt", Math.max(System.currentTimeMillis(), updatedAt + 1));
         applySnapshot(current.toString());
@@ -437,6 +474,7 @@ public class Config {
     private static void notifyHooks() {
         Context c = appContext;
         if (c == null || MODULE_PKG.equals(c.getPackageName())) return;
+        try { RecallBubbleUi.schedule(); } catch (Throwable ignored) {}
         try { RelatedKnowledgeBlock.onConfigChanged(); } catch (Throwable ignored) {}
         try { MessageTimeDisplay.onConfigChanged(); } catch (Throwable ignored) {}
         try {
@@ -454,7 +492,7 @@ public class Config {
         java.util.concurrent.ScheduledExecutorService worker = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
         worker.scheduleWithFixedDelay(new Runnable() {
             @Override public void run() { syncWithProvider(); }
-        }, 0, 2, java.util.concurrent.TimeUnit.SECONDS);
+        }, 2, 10, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     static String syncError() { return syncError; }
@@ -496,6 +534,8 @@ public class Config {
             o.put("updatebanner", updatebanner);
             o.put("dismissedUpc", dismissedUpc);
             o.put("showRecallHint", showRecallHint);
+            o.put("recallDisplayMode", recallDisplayMode);
+            o.put("recallBorderColor", recallBorderColor);
             o.put("recallHintOriginal", recallHintOriginal);
             o.put("recallHintText", recallHintText);
             o.put("blockaipeek", blockaipeek);

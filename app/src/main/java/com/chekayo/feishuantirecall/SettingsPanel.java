@@ -134,7 +134,7 @@ final class SettingsPanel {
         // ── 消息与隐私 ──
         box.addView(Ui.section(ctx, "消息与隐私"));
         LinearLayout c1 = Ui.card(ctx);
-        c1.addView(Ui.switchRow(ctx, "防撤回", "保留已撤回消息原文，未打开过的聊天也能救",
+        c1.addView(Ui.switchRow(ctx, "防撤回", "保留他人撤回的原文；自己的消息正常撤回",
                 Config.antirecall, new Ui.OnToggle() {
             @Override public void on(boolean b) {
                 Config.set("antirecall", b);
@@ -143,12 +143,20 @@ final class SettingsPanel {
         }));
         // ── 防撤回展示选项 ──
         c1.addView(Ui.dividerRow(ctx));
-        c1.addView(Ui.switchRow(ctx, "撤回提示", "无存档时的提示；有存档时聊天直接显示原文",
+        c1.addView(Ui.switchRow(ctx, "撤回标识", "保留原消息，按所选模式显示撤回提示或颜色标识",
                 Config.showRecallHint, new Ui.OnToggle() {
             @Override public void on(boolean b) { Config.set("showRecallHint", b); }
         }));
         c1.addView(Ui.dividerRow(ctx));
-        c1.addView(Ui.navRow(ctx, "撤回提示文案",
+        c1.addView(Ui.navRow(ctx, "撤回显示模式",
+                Config.recallDisplayMode == Config.RECALL_MODE_HINT ? "保留原文，仅显示撤回提示" : "保留原文并用气泡颜色标识",
+                Ui.ACCENT, new View.OnClickListener() {
+            @Override public void onClick(View v) { showRecallDisplayMode(ctx, (android.widget.LinearLayout) v); }
+        }));
+        c1.addView(Ui.dividerRow(ctx));
+        c1.addView(recallBorderColorRow(ctx));
+        c1.addView(Ui.dividerRow(ctx));
+        c1.addView(Ui.navRow(ctx, "未保留原文时的提示文案",
                 "当前：" + Config.recallHintText, Ui.ACCENT,
                 new View.OnClickListener() {
             @Override public void onClick(View v) { showRecallHintTextEditor(ctx); }
@@ -635,6 +643,92 @@ final class SettingsPanel {
     }
 
     /** 撤回提示文案编辑：支持 {name} 占位发送人。 */
+    private static final String[] RECALL_COLOR_NAMES = {"红色", "蓝色", "绿色", "橙色", "灰色"};
+    private static final String[] RECALL_COLORS = {"#E5484D", "#3B82F6", "#2CA36B", "#E88732", "#8A9199"};
+
+    private static View recallBorderColorRow(final Context ctx) {
+        final LinearLayout row = (LinearLayout) Ui.navRow(ctx, "撤回边框颜色", "当前：" + recallColorName(),
+                Ui.ACCENT, null);
+        final TextView subtitle = (TextView) ((LinearLayout) row.getChildAt(0)).getChildAt(1);
+        final View swatch = new View(ctx);
+        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(Ui.dp(ctx, 18), Ui.dp(ctx, 18));
+        size.rightMargin = Ui.dp(ctx, 12);
+        swatch.setLayoutParams(size);
+        row.addView(swatch, 0);
+        updateRecallColorSwatch(swatch);
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showRecallColors(ctx, subtitle, swatch); }
+        });
+        row.setClickable(true);
+        return row;
+    }
+
+    private static void showRecallDisplayMode(final Context ctx, final android.widget.LinearLayout row) {
+        final String[] labels = {"仅撤回提示", "消息颜色标识"};
+        int checked = Config.recallDisplayMode == Config.RECALL_MODE_HINT ? 0 : 1;
+        new AlertDialog.Builder(ctx).setTitle("撤回显示模式")
+                .setSingleChoiceItems(labels, checked, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface dialog, int which) {
+                        Config.setRecallDisplayMode(which == 0 ? Config.RECALL_MODE_HINT : Config.RECALL_MODE_COLOR);
+                        TextView subtitle = (TextView) ((LinearLayout) row.getChildAt(0)).getChildAt(1);
+                        subtitle.setText(Config.recallDisplayMode == Config.RECALL_MODE_HINT
+                                ? "保留原文，仅显示撤回提示" : "保留原文并用气泡颜色标识");
+                        RecallBubbleUi.schedule();
+                        dialog.dismiss();
+                    }
+                }).setNegativeButton("取消", null).show();
+    }
+
+    private static String recallColorName() {
+        for (int i = 0; i < RECALL_COLORS.length; i++)
+            if (RECALL_COLORS[i].equals(Config.recallBorderColor)) return RECALL_COLOR_NAMES[i];
+        return Config.recallBorderColor;
+    }
+
+    private static void updateRecallColorSwatch(View swatch) {
+        android.graphics.drawable.GradientDrawable fill = new android.graphics.drawable.GradientDrawable();
+        fill.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        fill.setColor(Color.parseColor(Config.sanitizeRecallBorderColor(Config.recallBorderColor)));
+        swatch.setBackground(fill);
+    }
+
+    private static void showRecallColors(final Context ctx, final TextView subtitle, final View selected) {
+        LinearLayout options = new LinearLayout(ctx);
+        options.setOrientation(LinearLayout.VERTICAL);
+        final AlertDialog dialog = new AlertDialog.Builder(ctx).setTitle("撤回边框颜色")
+                .setView(options).setNegativeButton("关闭", null).create();
+        for (int i = 0; i < RECALL_COLORS.length; i++) {
+            final String color = RECALL_COLORS[i];
+            LinearLayout option = new LinearLayout(ctx);
+            option.setGravity(Gravity.CENTER_VERTICAL);
+            option.setPadding(Ui.dp(ctx, 20), Ui.dp(ctx, 12), Ui.dp(ctx, 20), Ui.dp(ctx, 12));
+            View swatch = new View(ctx);
+            android.graphics.drawable.GradientDrawable fill = new android.graphics.drawable.GradientDrawable();
+            fill.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            fill.setColor(Color.parseColor(color));
+            swatch.setBackground(fill);
+            LinearLayout.LayoutParams circle = new LinearLayout.LayoutParams(Ui.dp(ctx, 24), Ui.dp(ctx, 24));
+            circle.rightMargin = Ui.dp(ctx, 16);
+            option.addView(swatch, circle);
+            TextView label = new TextView(ctx);
+            label.setText(RECALL_COLOR_NAMES[i] + (color.equals(Config.recallBorderColor) ? "  ✓" : ""));
+            label.setTextSize(16);
+            label.setTextColor(Ui.titleColor(ctx));
+            option.addView(label);
+            option.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    Config.setStr("recallBorderColor", color);
+                    subtitle.setText("当前：" + recallColorName());
+                    updateRecallColorSwatch(selected);
+                    dialog.dismiss();
+                }
+            });
+            options.addView(option);
+        }
+        dialog.show();
+        Ui.styleDialog(dialog);
+    }
+
     static void showRecallHintTextEditor(final Context ctx) {
         final EditText et = new EditText(ctx);
         et.setHint("例如：撤回了一条消息；或 {name} 撤回了消息");

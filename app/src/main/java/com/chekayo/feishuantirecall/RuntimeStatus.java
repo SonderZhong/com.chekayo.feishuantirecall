@@ -1,5 +1,6 @@
 package com.chekayo.feishuantirecall;
 
+import android.content.Context;
 import android.os.Bundle;
 
 import java.util.LinkedHashMap;
@@ -32,6 +33,9 @@ final class RuntimeStatus {
             else if (info.getLong("updatedAt") != authority) out.append("正在同步最新配置。\n");
             else out.append("版本与配置一致。\n");
         }
+        out.append("\n功能锚点状态：\n消息时间：").append(MessageTimeDisplay.status())
+                .append("\n防撤回身份：").append(RecallMessages.status())
+                .append("\n撤回气泡：").append(RecallBubbleUi.status()).append("\n");
         return out.toString();
     }
     static void show(final android.content.Context ctx) {
@@ -47,17 +51,39 @@ final class RuntimeStatus {
             @Override public void run() {
                 String result;
                 try {
-                    Bundle b = ctx.getContentResolver().call(ConfigProvider.URI, "status", null, null);
-                    result = b == null ? "无法读取模块配置源，请检查模块是否已安装。" : b.getString("text");
-                } catch (Throwable t) { result = "同步状态读取失败：" + t; }
+                    if (Config.MODULE_PKG.equals(ctx.getPackageName())) {
+                        Config.load();
+                        result = describe();
+                    } else {
+                        Bundle b = ctx.getContentResolver().call(ConfigProvider.URI, "status", null, null);
+                        String remote = b == null ? null : b.getString("text");
+                        result = remote != null ? remote : localDescription(ctx);
+                    }
+                } catch (Throwable t) { result = localDescription(ctx); }
                 if (!Config.MODULE_PKG.equals(ctx.getPackageName())) {
-                    result += "\n当前进程加载：v" + ModuleBuild.VERSION + " · " + ModuleBuild.BUILD;
+                    result += "\n当前进程加载：v" + ModuleBuild.VERSION + " · " + ModuleBuild.BUILD
+                            + "\n消息时间锚点：" + MessageTimeDisplay.status()
+                            + "\n防撤回身份锚点：" + RecallMessages.status()
+                            + "\n撤回气泡锚点：" + RecallBubbleUi.status()
+                            + "\nnative 库：" + (AntiRecall.NATIVE_STARTED ? "已加载（实际 SQL 命中见日志）" : "未加载");
                     if (!Config.syncError().isEmpty()) result += "\n同步错误：" + Config.syncError();
                 }
                 final String display = result;
                 text.post(new Runnable() { @Override public void run() { text.setText(display); } });
             }
         }, "config-status").start();
+    }
+
+    static String localDescription(Context ctx) {
+        String installed;
+        try {
+            android.content.pm.PackageInfo info = ctx.getPackageManager().getPackageInfo(Config.MODULE_PKG, 0);
+            installed = "v" + info.versionName + " (" + info.versionCode + ")";
+        } catch (Throwable t) { installed = "暂不可读取"; }
+        return "已安装模块：" + installed + "\n当前应用配置修订：" + Config.updatedAt()
+                + "\n模块配置源暂不可用，无法核对跨进程同步状态。"
+                + "\nAndroid 用户：" + ProfilePaths.userId()
+                + "；分身需在同一用户中安装 FeishuKit。\n配置源不可用时继续使用当前应用的本地配置。";
     }
     private RuntimeStatus() {}
 }
