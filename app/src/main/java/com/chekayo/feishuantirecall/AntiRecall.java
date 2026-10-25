@@ -234,6 +234,7 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
         //   rustclient jk(UPDATE_MESSAGES_ME_READ, UpdateMessagesMeReadRequest{message_ids,max_position,...}).
         // pb 类名 com.bytedance.lark.pb.im.v1.UpdateMessagesMeReadRequest 稳定未混淆.
         try { installAntiRead2(lpparam.classLoader); } catch (Throwable t) { alog("antiread2 install failed: " + t); }
+        if (PKG.equals(currentProcessName())) ManualReadAction.install(lpparam.classLoader);
 
         // ---- 2) Java 映射器兜底 (版本自适应) ----
         // 旧版飞书(≤7.70): 映射器 ax2.b.a(Object,int) 存在 -> 沿用【之前的方法】hook 它,
@@ -266,6 +267,12 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
             }
         } else {
             XposedBridge.log("[antirecall] 新版飞书: 跳过旧映射器，使用 SQL 保留和 MessageInfo 兜底");
+            // 新版飞书也需要Java层兜底：防止切后台时消息从缓存重新加载导致被撤回内容丢失
+            try {
+                installNewVersionRecallRestore(cl);
+            } catch (Throwable t) {
+                XposedBridge.log("[antirecall] 新版消息恢复 hook 失败: " + t);
+            }
         }
     }
 
@@ -632,10 +639,18 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
                         Diag.w("防撤回: sqlite3_step hook 安装成功：第 " + (i + 1) + " 次尝试，重试 " + i + " 次；等待实际撤回 SQL 命中");
                         // 安装成功后转入维护循环: 周期重打被反篡改还原的 liblark hook + 轮询退群提醒.
                         android.os.Handler mh = new android.os.Handler(android.os.Looper.getMainLooper());
+                        int accountRefreshCounter = 0;
                         while (true) {
-                            try { Thread.sleep(150); } catch (InterruptedException e) { return; }
+                            try { Thread.sleep(500); } catch (InterruptedException e) { return; } // 从 150ms 增加到 500ms
                             try { nativeMaintain(); } catch (Throwable e) { /* ignore */ }
-                            try { RecallMessages.refreshAccount(); } catch (Throwable ignored) {}
+
+                            // 账号刷新降频：每 10 次循环（5秒）才刷新一次，而不是每次都刷新
+                            accountRefreshCounter++;
+                            if (accountRefreshCounter >= 10) {
+                                accountRefreshCounter = 0;
+                                try { RecallMessages.refreshAccount(); } catch (Throwable ignored) {}
+                            }
+
                             // 退群/被移除提醒: 取队列 -> 主线程弹 Toast (ctx = 飞书 Application)
                             if (Config.leavenotify && ctx != null) {
                                 try {
@@ -1197,6 +1212,30 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
             return s == null ? null : s.toString();
         } catch (Throwable t) {
             return null;
+        }
+    }
+
+    /**
+     * 新版飞书消息恢复 Hook：防止切后台时消息从缓存重新加载导致被撤回内容丢失。
+     * Hook Message.getContent() 方法，在返回前检查并恢复被撤回的内容。
+     */
+    static void installNewVersionRecallRestore(ClassLoader cl) {
+        try {
+            // Hook Message.getContent() 方法
+            Class<?> messageClass = cl.loadClass("com.ss.android.lark.chat.entity.message.Message");
+            XposedHelpers.findAndHookMethod(messageClass, "getContent", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        Object message = param.thisObject;
+                        // 先让 RecallMessages.prepare 检查并恢复内容
+                        RecallMessages.prepare(message);
+                    } catch (Throwable ignored) {}
+                }
+            });
+            XposedBridge.log("[antirecall] 新版飞书: Message.getContent 已挂载消息恢复逻辑");
+        } catch (Throwable t) {
+            XposedBridge.log("[antirecall] 新版消息恢复 hook 失败: " + t);
         }
     }
 
