@@ -234,6 +234,7 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
         //   rustclient jk(UPDATE_MESSAGES_ME_READ, UpdateMessagesMeReadRequest{message_ids,max_position,...}).
         // pb 类名 com.bytedance.lark.pb.im.v1.UpdateMessagesMeReadRequest 稳定未混淆.
         try { installAntiRead2(lpparam.classLoader); } catch (Throwable t) { alog("antiread2 install failed: " + t); }
+        if (PKG.equals(currentProcessName())) ManualReadAction.install(lpparam.classLoader);
 
         // ---- 2) Java 映射器兜底 (版本自适应) ----
         // 旧版飞书(≤7.70): 映射器 ax2.b.a(Object,int) 存在 -> 沿用【之前的方法】hook 它,
@@ -266,6 +267,12 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
             }
         } else {
             XposedBridge.log("[antirecall] 新版飞书: 跳过旧映射器，使用 SQL 保留和 MessageInfo 兜底");
+            // 新版飞书也需要Java层兜底：防止切后台时消息从缓存重新加载导致被撤回内容丢失
+            try {
+                installNewVersionRecallRestore(cl);
+            } catch (Throwable t) {
+                XposedBridge.log("[antirecall] 新版消息恢复 hook 失败: " + t);
+            }
         }
     }
 
@@ -1197,6 +1204,30 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
             return s == null ? null : s.toString();
         } catch (Throwable t) {
             return null;
+        }
+    }
+
+    /**
+     * 新版飞书消息恢复 Hook：防止切后台时消息从缓存重新加载导致被撤回内容丢失。
+     * Hook Message.getContent() 方法，在返回前检查并恢复被撤回的内容。
+     */
+    static void installNewVersionRecallRestore(ClassLoader cl) {
+        try {
+            // Hook Message.getContent() 方法
+            Class<?> messageClass = cl.loadClass("com.ss.android.lark.chat.entity.message.Message");
+            XposedHelpers.findAndHookMethod(messageClass, "getContent", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        Object message = param.thisObject;
+                        // 先让 RecallMessages.prepare 检查并恢复内容
+                        RecallMessages.prepare(message);
+                    } catch (Throwable ignored) {}
+                }
+            });
+            XposedBridge.log("[antirecall] 新版飞书: Message.getContent 已挂载消息恢复逻辑");
+        } catch (Throwable t) {
+            XposedBridge.log("[antirecall] 新版消息恢复 hook 失败: " + t);
         }
     }
 
