@@ -639,18 +639,10 @@ public class AntiRecall implements IXposedHookLoadPackage, IXposedHookZygoteInit
                         Diag.w("防撤回: sqlite3_step hook 安装成功：第 " + (i + 1) + " 次尝试，重试 " + i + " 次；等待实际撤回 SQL 命中");
                         // 安装成功后转入维护循环: 周期重打被反篡改还原的 liblark hook + 轮询退群提醒.
                         android.os.Handler mh = new android.os.Handler(android.os.Looper.getMainLooper());
-                        int accountRefreshCounter = 0;
                         while (true) {
-                            try { Thread.sleep(500); } catch (InterruptedException e) { return; } // 从 150ms 增加到 500ms
+                            try { Thread.sleep(150); } catch (InterruptedException e) { return; }
                             try { nativeMaintain(); } catch (Throwable e) { /* ignore */ }
-
-                            // 账号刷新降频：每 10 次循环（5秒）才刷新一次，而不是每次都刷新
-                            accountRefreshCounter++;
-                            if (accountRefreshCounter >= 10) {
-                                accountRefreshCounter = 0;
-                                try { RecallMessages.refreshAccount(); } catch (Throwable ignored) {}
-                            }
-
+                            try { RecallMessages.refreshAccount(); } catch (Throwable ignored) {}
                             // 退群/被移除提醒: 取队列 -> 主线程弹 Toast (ctx = 飞书 Application)
                             if (Config.leavenotify && ctx != null) {
                                 try {
